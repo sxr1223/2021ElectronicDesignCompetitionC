@@ -33,6 +33,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "oled.h"
+#include "pid.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +48,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define SPWM_NUM 400
-#define DATA_LEN 100
+#define DATA_LEN 5
 #define DATA_CH_NUM 6
 /* USER CODE END PM */
 
@@ -77,7 +78,6 @@ static uint16_t spwm[]=
 21761,21810,21854,21893,21926,
 21955,21978,21996,22009,22017,
 
-
 22017,22009,21996,21978,21955,
 21926,21893,21854,21810,21761,
 21707,21648,21583,21514,21439,
@@ -105,9 +105,18 @@ static uint16_t spwm[]=
 
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]={0};
 uint16_t adc_data_fin[DATA_CH_NUM]={0};
+
 float adc_ch1_amp=0;
+uint16_t adc_ch1_max=0;
+uint16_t adc_ch1_min=4096;
 
 uint32_t sys_tic=0;
+
+pid_type_def amp_pid;
+const fp32 amp_p_i_d[3]={0.1,0,0};
+
+uint16_t vol_to_spwm;
+float vol_set=10;
 
 /* USER CODE END PV */
 
@@ -124,83 +133,94 @@ void set_PWM(uint16_t duty,uint8_t ch)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint16_t spwm_index=0;
-	static uint8_t sys_tic_tim=0;
+	
+	if(htim==(&htim16))
+	{
+		sys_tic++;
+		PID_calc(&amp_pid,adc_ch1_amp/10.0f,1);
+		if(sys_tic%40==0)
+		{
+			adc_ch1_max=0;
+			adc_ch1_min=4096;
+		}
+	}
 	
 	if(htim==(&htim17))
 	{
+		vol_to_spwm=adc_data_fin[0]/vol_set*21000+1020;
+		
 		if(spwm_index<200)
 		{
-			set_PWM(spwm[spwm_index],0);
+			PID_calc(&amp_pid,vol_to_spwm,spwm[spwm_index]);
+			set_PWM(amp_pid.out,0);
 			if(spwm_index==0)
 			{
 				HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
+				{
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+				}
 				HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_SET);
 			}
 		}
 		if(spwm_index>=200)
 		{
-			set_PWM(23040-spwm[spwm_index-200],0);
+			PID_calc(&amp_pid,vol_to_spwm,(23040-spwm[spwm_index-200]));
+			set_PWM(amp_pid.out,0);
 			if(spwm_index==200)
 			{
 				HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
+				{
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+				}
 				HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_SET);
 			}
 		}
 		spwm_index++;
 		if(spwm_index==400)
 			spwm_index=0;
-		
-		sys_tic_tim++;
-		if(sys_tic_tim==20)
-		{
-			sys_tic++;
-			sys_tic_tim=0;
-		}
 	}
+	
+
 }
 
-uint16_t adc_ch1_max=0;
-uint16_t adc_ch1_min=4096;
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 
@@ -221,12 +241,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		if(adc_data_fin[0]>adc_ch1_max)
 		{
 			adc_ch1_max=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale;
+			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
 		}
 		if(adc_data_fin[0]<adc_ch1_min)
 		{
 			adc_ch1_min=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale;
+			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
 		}		
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
@@ -281,8 +301,11 @@ int main(void)
   MX_DAC1_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
   
+	PID_init(&amp_pid,PID_DELTA,amp_p_i_d,22000,10000);
+	
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 	
 	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
@@ -301,11 +324,12 @@ int main(void)
 	HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
 	
 	HAL_TIM_Base_Start_IT(&htim17);
+	HAL_TIM_Base_Start_IT(&htim16);
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	
 	OLED_Init();
 	OLED_Display_On();
-	OLED_printf(0,0,16,"Hello World.");
+	//OLED_printf(0,0,16,"Hello World.");
 	HAL_COMP_Start_IT(&hcomp2);
 	//HAL_COMP_Start_IT(&hcomp2);
   /* USER CODE END 2 */
@@ -314,11 +338,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if(sys_tic%100==0)
-	  {
-		  adc_ch1_max=0;
-		  adc_ch1_min=4096;
-	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -1,25 +1,3 @@
-/******************************************************************************
-/// @brief
-/// @copyright Copyright (c) 2017 <dji-innovations, Corp. RM Dept.>
-/// @license MIT License
-/// Permission is hereby granted, free of charge, to any person obtaining a copy
-/// of this software and associated documentation files (the "Software"), to deal
-/// in the Software without restriction,including without limitation the rights
-/// to use, copy, modify, merge, publish, distribute, sublicense,and/or sell
-/// copies of the Software, and to permit persons to whom the Software is furnished
-/// to do so,subject to the following conditions:
-///
-/// The above copyright notice and this permission notice shall be included in
-/// all copies or substantial portions of the Software.
-///
-/// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-/// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-/// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-/// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-/// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-/// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-/// THE SOFTWARE.
-*******************************************************************************/
 /**
   ******************************************************************************
   * @file			pid.c
@@ -54,23 +32,6 @@ void pid_test_init(){
 	//为了解决上位机调参的时候第一次赋值的时候清零其他参数， 应该提前把参数表填充一下！
 
 }
-/**
-  ****************************(C) COPYRIGHT 2019 DJI****************************
-  * @file       pid.c/h
-  * @brief      pid实现函数，包括初始化，PID计算函数，
-  * @note       
-  * @history
-  *  Version    Date            Author          Modification
-  *  V1.0.0     Dec-26-2018     RM              1. 完成
-  *
-  @verbatim
-  ==============================================================================
-
-  ==============================================================================
-  @endverbatim
-  ****************************(C) COPYRIGHT 2019 DJI****************************
-  */
-
 #include "pid.h"
 #include "main.h"
 
@@ -86,16 +47,6 @@ void pid_test_init(){
         }                      \
     }
 
-/**
-  * @brief          pid struct data init
-  * @param[out]     pid: PID struct data point
-  * @param[in]      mode: PID_POSITION: normal pid
-  *                 PID_DELTA: delta pid
-  * @param[in]      PID: 0: kp, 1: ki, 2:kd
-  * @param[in]      max_out: pid max out
-  * @param[in]      max_iout: pid max iout
-  * @retval         none
-  */
 /**
   * @brief          pid struct data init
   * @param[out]     pid: PID结构数据指针
@@ -122,13 +73,6 @@ void PID_init(pid_type_def *pid, uint8_t mode, const fp32 PID[3], fp32 max_out, 
     pid->error[0] = pid->error[1] = pid->error[2] = pid->Pout = pid->Iout = pid->Dout = pid->out = 0.0f;
 }
 
-/**
-  * @brief          pid calculate 
-  * @param[out]     pid: PID struct data point
-  * @param[in]      ref: feedback data 
-  * @param[in]      set: set point
-  * @retval         pid out
-  */
 /**
   * @brief          pid计算
   * @param[out]     pid: PID结构数据指针
@@ -174,11 +118,6 @@ fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
     return pid->out;
 }
 
-/**
-  * @brief          pid out clear
-  * @param[out]     pid: PID struct data point
-  * @retval         none
-  */
 /**
   * @brief          pid 输出清除
   * @param[out]     pid: PID结构数据指针
