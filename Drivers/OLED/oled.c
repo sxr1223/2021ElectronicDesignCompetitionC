@@ -233,7 +233,7 @@ uint16_t OLED_printf(uint8_t x,uint8_t y,uint8_t size,char *format, ...)
     va_list ap;
     uint16_t n;
 
-	memset(send_buff,'\0',500);
+	memset(send_buff,'\0',100);
     va_start(ap, format);
     n = vsprintf(send_buff, format, ap);
     va_end(ap);

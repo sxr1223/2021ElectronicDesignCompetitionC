@@ -33,6 +33,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "oled.h"
+#include "pid.h"
+#include "math.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +50,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define SPWM_NUM 400
-#define DATA_LEN 100
+#define DATA_LEN 5
 #define DATA_CH_NUM 6
 /* USER CODE END PM */
 
@@ -77,7 +80,6 @@ static uint16_t spwm[]=
 21761,21810,21854,21893,21926,
 21955,21978,21996,22009,22017,
 
-
 22017,22009,21996,21978,21955,
 21926,21893,21854,21810,21761,
 21707,21648,21583,21514,21439,
@@ -105,15 +107,37 @@ static uint16_t spwm[]=
 
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]={0};
 uint16_t adc_data_fin[DATA_CH_NUM]={0};
+
 float adc_ch1_amp=0;
+uint16_t adc_ch1_max=0;
+uint16_t adc_ch1_min=4096;
 
 uint32_t sys_tic=0;
 
+pid_type_def amp_pid;
+const fp32 amp_p_i_d[3]={0,0.4,0};
+
+uint16_t vol_to_spwm;
+float vol_set=7;
+float rms;
+float vol_now=0;
+
+uint16_t cycle_extern=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+void set_SPWM_cycle(uint16_t cycle)
+{
+	//HAL_TIM_Base_Stop_IT(&htim17);
+	
+	__HAL_TIM_SetAutoreload(&htim17,72*cycle/400-1);
+	//__HAL_TIM_SetCounter(&htim17,0);
+	
+	//HAL_TIM_Base_Start_IT(&htim17);
+}
 
 void set_PWM(uint16_t duty,uint8_t ch)
 {
@@ -124,83 +148,100 @@ void set_PWM(uint16_t duty,uint8_t ch)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint16_t spwm_index=0;
-	static uint8_t sys_tic_tim=0;
+	
+	if(htim==(&htim16))
+	{
+		sys_tic++;
+		if(sys_tic%20==0)
+		{
+			adc_ch1_max=0;
+			adc_ch1_min=4096;
+			
+			vol_now=vol_now/400.0f;
+			vol_now=sqrt(vol_now);
+			rms=vol_now;
+			
+			//PID_calc(&amp_pid,vol_now,vol_set);
+			vol_now=0;
+			amp_pid.out=1;
+			if(amp_pid.out<0)
+				amp_pid.out=1;
+		}
+	}
 	
 	if(htim==(&htim17))
 	{
+		vol_now+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f/20*255.0f*1.516f+0.1133f),2);
 		if(spwm_index<200)
 		{
-			set_PWM(spwm[spwm_index],0);
+			set_PWM(amp_pid.out*spwm[spwm_index],0);
 			if(spwm_index==0)
 			{
 				HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
+				{
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+				}
 				HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_SET);
 			}
 		}
 		if(spwm_index>=200)
 		{
-			set_PWM(23040-spwm[spwm_index-200],0);
+			set_PWM((23040-amp_pid.out*spwm[spwm_index-200]),0);
 			if(spwm_index==200)
 			{
 				HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
-				__NOP();
+				{
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+					__NOP();
+				}
 				HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_SET);
 			}
 		}
 		spwm_index++;
 		if(spwm_index==400)
 			spwm_index=0;
-		
-		sys_tic_tim++;
-		if(sys_tic_tim==20)
-		{
-			sys_tic++;
-			sys_tic_tim=0;
-		}
 	}
+	
+
 }
 
-uint16_t adc_ch1_max=0;
-uint16_t adc_ch1_min=4096;
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 
@@ -221,12 +262,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		if(adc_data_fin[0]>adc_ch1_max)
 		{
 			adc_ch1_max=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale;
+			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
 		}
 		if(adc_data_fin[0]<adc_ch1_min)
 		{
 			adc_ch1_min=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale;
+			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
 		}		
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
@@ -234,8 +275,50 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 }
 
 void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
-{
-
+{	
+	static uint8_t exter_cycle_flag=0;
+	static uint16_t last_counter=0;
+	static uint16_t now_counter=0;
+	static uint16_t half_exter_cycle;
+	static uint16_t exter_cycle_buff[5]={0};
+	static uint8_t exter_cycle_buff_index=0;
+	static uint32_t exter_cycle_buff_sum;
+	
+	if(hcomp==&hcomp2)
+	{
+		now_counter=__HAL_TIM_GetCounter(&htim15);
+		
+		if(now_counter-last_counter>100)
+		{
+			if(exter_cycle_flag==0)
+				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
+			else
+				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+			exter_cycle_flag=!exter_cycle_flag;
+			
+			HAL_TIM_Base_Stop(&htim15);
+			
+			if(exter_cycle_flag==0)
+				half_exter_cycle=now_counter;
+			else
+				exter_cycle_buff[exter_cycle_buff_index++]=half_exter_cycle+now_counter;
+			
+			if(exter_cycle_buff_index==5)
+			{
+				exter_cycle_buff_index=0;
+				exter_cycle_buff_sum=exter_cycle_buff[0]+exter_cycle_buff[1]+exter_cycle_buff[2]+exter_cycle_buff[3]+exter_cycle_buff[4];
+				cycle_extern=exter_cycle_buff_sum/5+5;
+				set_SPWM_cycle(20000);
+			}
+			
+			last_counter=now_counter=0;
+			
+			__HAL_TIM_SetCounter(&htim15,0);
+			HAL_TIM_Base_Start(&htim15);
+		}
+		else
+			last_counter=now_counter;
+	}
 }
 
 /* USER CODE END PFP */
@@ -281,8 +364,12 @@ int main(void)
   MX_DAC1_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
+  MX_TIM16_Init();
+  MX_TIM15_Init();
   /* USER CODE BEGIN 2 */
   
+	PID_init(&amp_pid,PID_DELTA,amp_p_i_d,1,0.4);
+	
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 	
 	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
@@ -297,28 +384,29 @@ int main(void)
 //	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TD1|HRTIM_OUTPUT_TD2);
 //	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_D);
 
-	HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_SET);
+	HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
 	
 	HAL_TIM_Base_Start_IT(&htim17);
+	HAL_TIM_Base_Start_IT(&htim16);
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	
 	OLED_Init();
 	OLED_Display_On();
 	OLED_printf(0,0,16,"Hello World.");
+	
+	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,100);
+	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
+	
 	HAL_COMP_Start_IT(&hcomp2);
-	//HAL_COMP_Start_IT(&hcomp2);
+	HAL_TIM_Base_Start(&htim15);
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if(sys_tic%100==0)
-	  {
-		  adc_ch1_max=0;
-		  adc_ch1_min=4096;
-	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

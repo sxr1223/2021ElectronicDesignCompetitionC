@@ -55,6 +55,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
+void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
