@@ -120,7 +120,8 @@ const fp32 amp_p_i_d[3]={0,0.4,0};
 uint16_t vol_to_spwm;
 float vol_set=7;
 float rms;
-float vol_now=0;
+float vol_sq_sum=0;
+uint16_t vol_sq_times=0;
 
 uint16_t cycle_extern=0;
 /* USER CODE END PV */
@@ -128,16 +129,6 @@ uint16_t cycle_extern=0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
-void set_SPWM_cycle(uint16_t cycle)
-{
-	//HAL_TIM_Base_Stop_IT(&htim17);
-	
-	__HAL_TIM_SetAutoreload(&htim17,72*cycle/400-1);
-	//__HAL_TIM_SetCounter(&htim17,0);
-	
-	//HAL_TIM_Base_Start_IT(&htim17);
-}
 
 void set_PWM(uint16_t duty,uint8_t ch)
 {
@@ -157,12 +148,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			adc_ch1_max=0;
 			adc_ch1_min=4096;
 			
-			vol_now=vol_now/400.0f;
-			vol_now=sqrt(vol_now);
-			rms=vol_now;
+			vol_sq_sum=vol_sq_sum/vol_sq_times;
+			rms=sqrt(vol_sq_sum);
+			vol_sq_times=vol_sq_sum=0;
 			
-			//PID_calc(&amp_pid,vol_now,vol_set);
-			vol_now=0;
+			//PID_calc(&amp_pid,rms,vol_set);
+
 			amp_pid.out=1;
 			if(amp_pid.out<0)
 				amp_pid.out=1;
@@ -171,7 +162,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	
 	if(htim==(&htim17))
 	{
-		vol_now+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f/20*255.0f*1.516f+0.1133f),2);
 		if(spwm_index<200)
 		{
 			set_PWM(amp_pid.out*spwm[spwm_index],0);
@@ -237,6 +227,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		spwm_index++;
 		if(spwm_index==400)
 			spwm_index=0;
+		
+		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 	}
 	
 
@@ -270,12 +262,16 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
 		}		
 		
+		vol_sq_sum+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f/20*255.0f*1.516f+0.1133f),2);
+		vol_sq_times++;
+		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
 
 void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 {	
+	//全部都是用来计算外部信号周期的变量，每测出5组就设定一次
 	static uint8_t exter_cycle_flag=0;
 	static uint16_t last_counter=0;
 	static uint16_t now_counter=0;
@@ -290,25 +286,20 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 		
 		if(now_counter-last_counter>100)
 		{
-			if(exter_cycle_flag==0)
-				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
-			else
-				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
-			exter_cycle_flag=!exter_cycle_flag;
-			
 			HAL_TIM_Base_Stop(&htim15);
 			
 			if(exter_cycle_flag==0)
 				half_exter_cycle=now_counter;
 			else
 				exter_cycle_buff[exter_cycle_buff_index++]=half_exter_cycle+now_counter;
+			exter_cycle_flag=!exter_cycle_flag;
 			
 			if(exter_cycle_buff_index==5)
 			{
 				exter_cycle_buff_index=0;
 				exter_cycle_buff_sum=exter_cycle_buff[0]+exter_cycle_buff[1]+exter_cycle_buff[2]+exter_cycle_buff[3]+exter_cycle_buff[4];
 				cycle_extern=exter_cycle_buff_sum/5+5;
-				set_SPWM_cycle(20000);
+				__HAL_TIM_SetAutoreload(&htim17,cycle_extern*72/400-1);
 			}
 			
 			last_counter=now_counter=0;
@@ -386,6 +377,7 @@ int main(void)
 
 	HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 	
 	HAL_TIM_Base_Start_IT(&htim17);
 	HAL_TIM_Base_Start_IT(&htim16);
@@ -407,6 +399,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

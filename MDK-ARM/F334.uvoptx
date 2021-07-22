@@ -195,6 +195,21 @@
           <WinNumber>1</WinNumber>
           <ItemText>htim17.Instance-&gt;ARR,0x0A</ItemText>
         </Ww>
+        <Ww>
+          <count>8</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>htim16</ItemText>
+        </Ww>
+        <Ww>
+          <count>9</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>tem_flag</ItemText>
+        </Ww>
+        <Ww>
+          <count>10</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>cycle,0x0A</ItemText>
+        </Ww>
       </WatchWindow1>
       <ScvdList>
         <Filename>.\EventRecorderStub.scvd</Filename>
