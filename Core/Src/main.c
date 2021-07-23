@@ -124,6 +124,8 @@ float vol_sq_sum=0;
 uint16_t vol_sq_times=0;
 
 uint16_t cycle_extern=0;
+
+static uint16_t spwm_index=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -138,12 +140,12 @@ void set_PWM(uint16_t duty,uint8_t ch)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	static uint16_t spwm_index=0;
+	
 	
 	if(htim==(&htim16))
 	{
 		sys_tic++;
-		if(sys_tic%20==0)
+		if(sys_tic%(cycle_extern/1000)==0)
 		{
 			adc_ch1_max=0;
 			adc_ch1_min=4096;
@@ -227,8 +229,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		spwm_index++;
 		if(spwm_index==400)
 			spwm_index=0;
-		
-		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 	}
 	
 
@@ -268,7 +268,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
-
+#define EXTERN_CYCLE_SAMP_TIMES 10
 void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 {	
 	//全部都是用来计算外部信号周期的变量，每测出5组就设定一次
@@ -276,7 +276,7 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 	static uint16_t last_counter=0;
 	static uint16_t now_counter=0;
 	static uint16_t half_exter_cycle;
-	static uint16_t exter_cycle_buff[5]={0};
+	static uint16_t exter_cycle_buff[EXTERN_CYCLE_SAMP_TIMES]={0};
 	static uint8_t exter_cycle_buff_index=0;
 	static uint32_t exter_cycle_buff_sum;
 	
@@ -289,17 +289,29 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 			HAL_TIM_Base_Stop(&htim15);
 			
 			if(exter_cycle_flag==0)
-				half_exter_cycle=now_counter;
-			else
-				exter_cycle_buff[exter_cycle_buff_index++]=half_exter_cycle+now_counter;
-			exter_cycle_flag=!exter_cycle_flag;
-			
-			if(exter_cycle_buff_index==5)
 			{
-				exter_cycle_buff_index=0;
-				exter_cycle_buff_sum=exter_cycle_buff[0]+exter_cycle_buff[1]+exter_cycle_buff[2]+exter_cycle_buff[3]+exter_cycle_buff[4];
-				cycle_extern=exter_cycle_buff_sum/5+5;
+				half_exter_cycle=now_counter;
+				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+			}
+			else
+			{
+				exter_cycle_buff[exter_cycle_buff_index++]=half_exter_cycle+now_counter;
+				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
+			}
+			if(HAL_COMP_GetOutputLevel(&hcomp2))
+				exter_cycle_flag=0;
+			else
+				exter_cycle_flag=1;
+			
+			if(exter_cycle_buff_index==EXTERN_CYCLE_SAMP_TIMES)
+			{
+				for(exter_cycle_buff_index=0;exter_cycle_buff_index<EXTERN_CYCLE_SAMP_TIMES;exter_cycle_buff_index++)
+					exter_cycle_buff_sum+=exter_cycle_buff[exter_cycle_buff_index];
+				cycle_extern=exter_cycle_buff_sum/EXTERN_CYCLE_SAMP_TIMES+5;
+				exter_cycle_buff_sum=exter_cycle_buff_index=0;
+				
 				__HAL_TIM_SetAutoreload(&htim17,cycle_extern*72/400-1);
+				spwm_index=0;
 			}
 			
 			last_counter=now_counter=0;
@@ -387,7 +399,7 @@ int main(void)
 	OLED_Display_On();
 	OLED_printf(0,0,16,"Hello World.");
 	
-	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,100);
+	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,2048);
 	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
 	
 	HAL_COMP_Start_IT(&hcomp2);
