@@ -65,31 +65,46 @@ const fp32 buck_p_i_d[3]={0,0.4,0};
 const fp32 boost_p_i_d[3]={0,0.4,0};
 
 float vol_set=10;
-
-uint16_t pwm[3][2][2]={0};
-
+float vol_out=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-void set_PWM(void)
+void set_PWM(uint16_t pwm)
 {
-	for(uint8_t i=0;i<3;i++)
+		hhrtim1.Instance->sTimerxRegs[0].CMP1xR = pwm;
+		hhrtim1.Instance->sTimerxRegs[0].CMP2xR = pwm/2+11520;//23040-(23040-pwm)/2
+}
+
+void soft_start(void)
+{
+	uint16_t pwm_tem;
+	if(vol_out<2)
 	{
-		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][0][0];
-		hhrtim1.Instance->sTimerxRegs[i].CMP2xR = pwm[i][0][1];
-		hhrtim1.Instance->sTimerxRegs[i].CMP3xR = pwm[i][1][0];
-		hhrtim1.Instance->sTimerxRegs[i].CMP4xR = pwm[i][1][1];
+		HAL_TIM_Base_Stop_IT(&htim17);
+		__HAL_TIM_SET_COUNTER(&htim17,0);
+		set_PWM(0);
+		
+		for(pwm_tem=0;pwm_tem<9000;pwm_tem+=200)
+		{
+			set_PWM(pwm_tem);
+			HAL_Delay(10);
+		}
+		
+		HAL_TIM_Base_Start_IT(&htim17);
 	}
 }
+
+
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim==&htim17)
 	{
-		set_PWM();
+		PID_calc(&boost_pid,vol_out,vol_set);
+		set_PWM(fabs(boost_pid.out));
 	}
 }
 
@@ -107,11 +122,11 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 				sum+=adc_data[j][i];
 			adc_data_fin[i]=sum/DATA_LEN;
 		}
-				
+		vol_out=adc_data_fin[0]/4096.0f*3.3f*10.0f;
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
-
+uint16_t pwm_temp=0;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -156,18 +171,18 @@ int main(void)
   /* USER CODE BEGIN 2 */
   
 	PID_init(&buck_pid,PID_DELTA,buck_p_i_d,1,0.4);
-	PID_init(&boost_pid,PID_DELTA,boost_p_i_d,1,0.4);
+	PID_init(&boost_pid,PID_DELTA,boost_p_i_d,23040*2/3,23040*2/3*0.6);
 	
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
+//	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 	
 	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_A);
 	
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TB1|HRTIM_OUTPUT_TB2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_B);
-	
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TC1|HRTIM_OUTPUT_TC2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_C);
+//	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TB1|HRTIM_OUTPUT_TB2);
+//	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_B);
+//	
+//	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TC1|HRTIM_OUTPUT_TC2);
+//	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_C);
 	
 //	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TD1|HRTIM_OUTPUT_TD2);
 //	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_D);
@@ -188,7 +203,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
+//	  if(vol_out<2)
+//		  soft_start();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
