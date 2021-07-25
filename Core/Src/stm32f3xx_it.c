@@ -57,8 +57,6 @@
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_adc1;
-extern COMP_HandleTypeDef hcomp2;
-extern TIM_HandleTypeDef htim16;
 extern TIM_HandleTypeDef htim17;
 /* USER CODE BEGIN EV */
 
@@ -217,20 +215,6 @@ void DMA1_Channel1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles TIM1 update and TIM16 interrupts.
-  */
-void TIM1_UP_TIM16_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM1_UP_TIM16_IRQn 0 */
-
-  /* USER CODE END TIM1_UP_TIM16_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim16);
-  /* USER CODE BEGIN TIM1_UP_TIM16_IRQn 1 */
-
-  /* USER CODE END TIM1_UP_TIM16_IRQn 1 */
-}
-
-/**
   * @brief This function handles TIM1 trigger and commutation and TIM17 interrupts.
   */
 void TIM1_TRG_COM_TIM17_IRQHandler(void)
@@ -242,20 +226,6 @@ void TIM1_TRG_COM_TIM17_IRQHandler(void)
   /* USER CODE BEGIN TIM1_TRG_COM_TIM17_IRQn 1 */
 
   /* USER CODE END TIM1_TRG_COM_TIM17_IRQn 1 */
-}
-
-/**
-  * @brief This function handles COMP2 global interrupt through EXTI line 22.
-  */
-void COMP2_IRQHandler(void)
-{
-  /* USER CODE BEGIN COMP2_IRQn 0 */
-
-  /* USER CODE END COMP2_IRQn 0 */
-  HAL_COMP_IRQHandler(&hcomp2);
-  /* USER CODE BEGIN COMP2_IRQn 1 */
-
-  /* USER CODE END COMP2_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

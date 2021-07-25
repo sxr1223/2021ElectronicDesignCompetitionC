@@ -55,14 +55,9 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
-void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define SLOW_L_Pin GPIO_PIN_3
-#define SLOW_L_GPIO_Port GPIOB
-#define SLOW_H_Pin GPIO_PIN_4
-#define SLOW_H_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
