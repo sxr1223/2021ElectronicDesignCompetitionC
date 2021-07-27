@@ -59,13 +59,17 @@
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data_fin[DATA_CH_NUM]= {0};
 
+pid_type_def curr_pid;
 pid_type_def vol_pid;
+const fp32 curr_p_i_d[3]= {0,0.4,0};
 const fp32 vol_p_i_d[3]= {0,0.4,0};
 
 uint16_t scop[DATA_LEN];
 
 float vol_set=10;
 float vol_out=0;
+float vol_in=0;
+float curr_in=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,12 +103,15 @@ void soft_start(void)
 
 
 
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim==&htim17)
 	{
-		PID_calc(&vol_pid,vol_out,vol_set);
-		set_PWM(fabs(vol_pid.out));
+		//PID_calc(&vol_pid,vol_out,vol_set);
+		//set_PWM(fabs(vol_pid.out));
+		set_PWM(3000);
+		
 	}
 }
 
@@ -128,21 +135,20 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 	if(hadc==&hadc1)
 	{
-//		for(i=0;i<DATA_CH_NUM;i++)
-//		{
-//			sum=0;
-//			for(j=0;j<DATA_LEN;j++)
-//				sum+=adc_data[j][i];
-//			adc_data_fin[i]=sum/DATA_LEN;
-//		}
-		for(i=0;i<DATA_LEN;i++)
-			scop[i]=adc_data[i][0];
-		bubble(scop,DATA_LEN);
-		for(i=2,sum=0;i<DATA_LEN-2;i++)
-			sum+=scop[i];		
-		adc_data_fin[0]=(float)sum/(float)(DATA_LEN-4);
-		
+		for(j=0;j<3;j++)
+		{
+			for(i=0;i<DATA_LEN;i++)
+				scop[i]=adc_data[i][j];
+			bubble(scop,DATA_LEN);
+			for(i=2,sum=0;i<DATA_LEN-2;i++)
+				sum+=scop[i];
+			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
+		}
+
 		vol_out=adc_data_fin[0]*0.0081f+0.5817f;
+		vol_in=adc_data_fin[1]*0.0081f+0.5817f;
+		curr_in=adc_data_fin[2]*0.0081f+0.5817f;
+		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
@@ -189,7 +195,8 @@ int main(void)
 	MX_TIM17_Init();
 	/* USER CODE BEGIN 2 */
 
-	PID_init(&vol_pid,PID_DELTA,vol_p_i_d,23040*2/3,23040*2/3*0.6);
+	PID_init(&vol_pid,PID_DELTA,vol_p_i_d,10,6);
+	PID_init(&curr_pid,PID_DELTA,curr_p_i_d,23040/2,23040/2);
 
 //	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 
