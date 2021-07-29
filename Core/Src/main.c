@@ -50,35 +50,126 @@
 #define DATA_LEN 20
 #define DATA_CH_NUM 6
 #define MAX_PWM 23040
+
+#define SQRT_3_DIV_2 	0.86602540378f
+#define SQRT_6_DIV_3 	0.81649658093f
+#define SQRT_2			1.41421356237f
+#define SQRT_3 			1.73205080757f
+#define SQRT_6 			2.44948974278f
+#define PI_2_DIV_3		2.09439510239f
+#define TWO_DIV_THREE	0.66666666667f
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 
+//ADC buffer
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data_fin[DATA_CH_NUM]= {0};
 
-pid_type_def curr_pid;
-pid_type_def vol_pid;
-const fp32 curr_p_i_d[3]= {0,0.4,0};
-const fp32 vol_p_i_d[3]= {0,0.4,0};
+//PID
+pid_type_def curr_q_pid;
+pid_type_def vol_q_pid;
+pid_type_def curr_d_pid;
+pid_type_def vol_d_pid;
+pid_type_def vol_DC_pid;
 
-uint16_t scop[DATA_LEN];
+const fp32 curr_q_p_i_d[3]= {0,0.4,0};
+const fp32 curr_d_p_i_d[3]= {0,0.4,0};
+const fp32 vol_d_p_i_d[3]= {0,0.4,0};
+const fp32 vol_q_p_i_d[3]= {0,0.4,0};
+const fp32 vol_DC_p_i_d[3]={0,0.4,0};
 
-float vol_set=10;
-float vol_out=0;
-float vol_in=0;
-float curr_in=0;
+float vol_set=10.0;
 
+//pwm
 uint16_t pwm[4][2]={0};
-float modul=1;
-uint16_t temp[4];
+uint16_t pwm_temp[4];
+
+//vol_in_theta
+float sin_temp,cos_temp;
+
+//sample data
+float abc_curr_samp[3]={1,2,3};
+float al_be_curr_samp[2]={2,4};
+float dq_curr_samp[2]={1,1};
+
+float abc_vol_in[3]={1,2,3};
+float al_be_vol_in[2]={2,4};
+float dq_vol_in[2]={1,1};
+
+float vol_DC_samp;
+
+float module_vol_in;
+float theta_vol=0.01;
+
+float dq_curr_out[2];
+float al_be_curr_out[2];
+
+//SVPWM
+uint8_t sector;
+float V_DC=10;
+int32_t X,Y,Z;
+uint16_t T_per,T_nex;
+uint16_t T=23040;
+uint16_t T0,T7;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+void clarke_amp(float abc[3],float alph_beta_res[2])
+{
+	alph_beta_res[0]=(2.0f*abc[0]-abc[1]-abc[2])/3.0f;
+	alph_beta_res[1]=(abc[1]-abc[2])/SQRT_3;
+}
+
+void clarke_pow(float abc[3],float alph_beta_res[2])
+{
+	alph_beta_res[0]=(2.0f*abc[0]-abc[1]-abc[2])/SQRT_6;
+	alph_beta_res[1]=(abc[1]-abc[2])/SQRT_2;
+}
+
+void clarke_amp_simp(float abc[3],float alph_beta_res[2])
+{
+	alph_beta_res[0]=abc[0];
+	alph_beta_res[1]=(abc[0]+2.0f*abc[1])/SQRT_3;
+}
+
+void iclarke_amp(float abc_res[3],float alph_beta[2])
+{
+	abc_res[0]=SQRT_6_DIV_3*alph_beta[0];
+	abc_res[1]=-alph_beta[0]/SQRT_6+alph_beta[1]/SQRT_2;
+	abc_res[2]=abc_res[1]-alph_beta[1]*SQRT_2;
+}
+
+void park(float alph_beta[2],float dq_res[2])
+{
+	dq_res[0]=alph_beta[0]*cos_temp+alph_beta[1]*sin_temp;
+	dq_res[1]=-alph_beta[0]*sin_temp+alph_beta[1]*cos_temp;
+}
+
+void ipark(float alph_beta_res[2],float dq[2])
+{
+	alph_beta_res[0]=dq[0]*cos_temp-dq[1]*sin_temp;
+	alph_beta_res[1]=dq[0]*sin_temp+dq[1]*cos_temp;
+}
+
+void clarke_park_amp(float abc[3],float dq_res[2],float theta)
+{
+	dq_res[0]=TWO_DIV_THREE*(arm_cos_f32(theta)*abc[0]+arm_cos_f32(theta-PI_2_DIV_3)*abc[1]+arm_cos_f32(theta+PI_2_DIV_3));
+	dq_res[1]=TWO_DIV_THREE*(-arm_sin_f32(theta)*abc[0]-arm_sin_f32(theta-PI_2_DIV_3)*abc[1]-arm_sin_f32(theta+PI_2_DIV_3));
+}
+
+void iclarke_park_amp(float abc_res[3],float dq[2],float theta)
+{	
+	abc_res[0]=dq[0]*arm_cos_f32(theta)-dq[1]*arm_sin_f32(theta);
+	abc_res[1]=dq[0]*arm_cos_f32(theta-PI_2_DIV_3)-dq[1]*arm_sin_f32(theta-PI_2_DIV_3);
+	abc_res[2]=dq[0]*arm_cos_f32(theta+PI_2_DIV_3)-dq[1]*arm_sin_f32(theta+PI_2_DIV_3);
+}
 
 void set_PWM(void)
 {
@@ -88,45 +179,193 @@ void set_PWM(void)
 		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][1];
 	}
 }
-
-void soft_start(void)
-{
-	uint16_t pwm_tem;
-	if(vol_out<2)
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{	
+	if(htim==&htim17)
 	{
-		HAL_TIM_Base_Stop_IT(&htim17);
-		__HAL_TIM_SET_COUNTER(&htim17,0);
 
+		for(uint8_t i=0;i<4;i++)
+			pwm_temp[i]=pwm[i][1]-pwm[i][0];
+		
+		set_PWM();
 
-		for(pwm_tem=0; pwm_tem<9000; pwm_tem+=200)
-		{
-
-			HAL_Delay(10);
-		}
-
-		HAL_TIM_Base_Start_IT(&htim17);
 	}
 }
 
-
-
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+void bubble(uint16_t *a,uint8_t num)
 {
-	static uint8_t sector=1;
-	static uint16_t step=0;
-	uint16_t A,B,C,T0,T7;
-	uint16_t T_per,T_nex,T0_7;
+	uint16_t bubble_temp = 0;
+	for (uint16_t i = 0; i < num; i++)
+		for (uint16_t j = 0; j < num-1-i; j++)
+			if (a[j]>a[j+1])
+			{
+				bubble_temp = a[j + 1];
+				a[j + 1] = a[j];
+				a[j] = bubble_temp;
+			}
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	static uint16_t i,j;
+	static uint32_t sum;
+	static uint16_t scop[DATA_LEN];
 	
-	
-	
-	if(htim==&htim17)
+	if(hadc==&hadc1)
 	{
-		T_per=modul*MAX_PWM*sin(PI/3.0f*(1.0f-step/400.0f));
-		T_nex=modul*MAX_PWM*sin(PI/3.0f*step/400.0f);
-		T0_7=MAX_PWM-T_nex-T_per;
-		T0=T7=T0_7/2;
+		for(j=0;j<DATA_CH_NUM;j++)
+		{
+			for(i=0;i<DATA_LEN;i++)
+				scop[i]=adc_data[i][j];
+			bubble(scop,DATA_LEN);
+			for(i=2,sum=0;i<DATA_LEN-2;i++)
+				sum+=scop[i];
+			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
+		}
 		
+		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+	}
+}
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_HRTIM1_Init();
+  MX_ADC1_Init();
+  MX_I2C1_Init();
+  MX_USART1_UART_Init();
+  MX_TIM17_Init();
+  /* USER CODE BEGIN 2 */
+
+	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,6);
+	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,23040/2,23040/2);
+	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,1,1);
+	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,1,1);
+	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,1,1);
+	
+	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
+
+	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
+	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_A);
+
+	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TB1|HRTIM_OUTPUT_TB2);
+	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_B);
+
+	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TC1|HRTIM_OUTPUT_TC2);
+	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_C);
+
+	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TD1|HRTIM_OUTPUT_TD2);
+	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_D);
+
+	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
+
+	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+
+	OLED_Init();
+	OLED_Display_On();
+	OLED_printf(0,0,16,"Hello World.");
+
+	HAL_TIM_Base_Start_IT(&htim17);
+	
+	for(uint16_t i=0;i<20000;i++)
+	{
+		clarke_amp(abc_vol_in,al_be_vol_in);
+		
+		arm_sqrt_f32(al_be_vol_in[0]*al_be_vol_in[0]+al_be_vol_in[1]*al_be_vol_in[1],&module_vol_in);
+		sin_temp=al_be_vol_in[1]/module_vol_in;
+		cos_temp=al_be_vol_in[0]/module_vol_in;
+		
+		clarke_amp(abc_curr_samp,al_be_curr_samp);
+		park(al_be_curr_samp,dq_curr_samp);
+
+		PID_calc(&vol_DC_pid,vol_DC_samp,vol_set);
+		
+		PID_calc(&curr_d_pid,dq_curr_samp[0],0);
+		PID_calc(&curr_q_pid,dq_curr_samp[1],vol_DC_pid.out*module_vol_in);
+		
+		dq_curr_out[0]=curr_d_pid.out;
+		dq_curr_out[1]=curr_q_pid.out;
+		ipark(al_be_curr_out,dq_curr_out);
+
+		sector=(al_be_curr_out[0]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
+		
+		X=SQRT_3*al_be_curr_out[1]*T/V_DC;
+		Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
+		Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
+		
+		switch(sector)
+		{
+			case 1:
+			{
+				T_per=Z;
+				T_nex=Y;
+				break;
+			}
+			case 2:
+			{
+				T_per=Y;
+				T_nex=-X;
+				break;
+			}
+			case 3:
+			{
+				T_per=-Z;
+				T_nex=X;
+				break;
+			}
+			case 4:
+			{
+				T_per=-X;
+				T_nex=Z;
+				break;
+			}
+			case 5:
+			{
+				T_per=X;
+				T_nex=-Y;
+				break;
+			}
+			case 6:
+			{
+				T_per=-Y;
+				T_nex=-Z;
+				break;
+			}
+		}
+		
+		T0=T7=(T-T_per-T_nex)/2;
 		switch(sector)
 		{
 			case 1:
@@ -207,138 +446,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 				break;
 			}
-			
 		}
-		for(uint8_t i=0;i<4;i++)
-			temp[i]=pwm[i][1]-pwm[i][0];
-		
-		set_PWM();
-
-		step++;
-		if(step==400)
-		{
-			step=0;
-			sector++;
-		}
-		
-		if(sector==7)
-			sector=1;
 	}
-}
-
-void bubble(uint16_t *a,uint8_t num)
-{
-	uint16_t bubble_temp = 0;
-	for (uint16_t i = 0; i < num; i++)
-		for (uint16_t j = 0; j < num-1-i; j++)
-			if (a[j]>a[j+1])
-			{
-				bubble_temp = a[j + 1];
-				a[j + 1] = a[j];
-				a[j] = bubble_temp;
-			}
-}
-
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-	uint16_t i,j;
-	uint32_t sum;
-
-	if(hadc==&hadc1)
-	{
-		for(j=0;j<3;j++)
-		{
-			for(i=0;i<DATA_LEN;i++)
-				scop[i]=adc_data[i][j];
-			bubble(scop,DATA_LEN);
-			for(i=2,sum=0;i<DATA_LEN-2;i++)
-				sum+=scop[i];
-			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
-		}
-
-		vol_out=adc_data_fin[0]*0.0081f+0.5817f;
-		vol_in=adc_data_fin[1]*0.0081f+0.5817f;
-		curr_in=adc_data_fin[2]*0.0081f+0.5817f;
-		
-		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-	}
-}
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_HRTIM1_Init();
-  MX_ADC1_Init();
-  MX_I2C1_Init();
-  MX_USART1_UART_Init();
-  MX_TIM17_Init();
-  /* USER CODE BEGIN 2 */
-
-	PID_init(&vol_pid,PID_DELTA,vol_p_i_d,10,6);
-	PID_init(&curr_pid,PID_DELTA,curr_p_i_d,23040/2,23040/2);
-
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
-
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_A);
-
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TB1|HRTIM_OUTPUT_TB2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_B);
-
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TC1|HRTIM_OUTPUT_TC2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_C);
-
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TD1|HRTIM_OUTPUT_TD2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_D);
-
-	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
-
-	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-
-	OLED_Init();
-	OLED_Display_On();
-	OLED_printf(0,0,16,"Hello World.");
-
-	HAL_TIM_Base_Start_IT(&htim17);
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		clarke_amp(abc_curr_samp,al_be_curr_samp);
+		iclarke_amp(abc_curr_samp,al_be_curr_samp);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

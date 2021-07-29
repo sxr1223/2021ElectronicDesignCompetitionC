@@ -138,11 +138,6 @@ void PID_init(pid_type_def *pid, uint8_t mode, const fp32 PID[3], fp32 max_out, 
   */
 fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
 {
-    if (pid == NULL)
-    {
-        return 0.0f;
-    }
-
     pid->error[2] = pid->error[1];
     pid->error[1] = pid->error[0];
     pid->set = set;
