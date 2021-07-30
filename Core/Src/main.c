@@ -85,31 +85,9 @@ void set_PWM(void)
 	for(uint8_t i=0;i<4;i++)
 	{
 		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][0];
-		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][1];
+		hhrtim1.Instance->sTimerxRegs[i].CMP2xR = pwm[i][1];
 	}
 }
-
-void soft_start(void)
-{
-	uint16_t pwm_tem;
-	if(vol_out<2)
-	{
-		HAL_TIM_Base_Stop_IT(&htim17);
-		__HAL_TIM_SET_COUNTER(&htim17,0);
-
-
-		for(pwm_tem=0; pwm_tem<9000; pwm_tem+=200)
-		{
-
-			HAL_Delay(10);
-		}
-
-		HAL_TIM_Base_Start_IT(&htim17);
-	}
-}
-
-
-
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
