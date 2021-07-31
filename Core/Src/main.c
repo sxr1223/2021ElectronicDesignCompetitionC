@@ -72,7 +72,7 @@ float vol_in=0;
 float curr_in=0;
 
 uint16_t pwm[4][2]={0};
-float modul=1;
+float modul=0.8;
 uint16_t temp[4];
 /* USER CODE END PV */
 
@@ -234,9 +234,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
 		}
 
-		vol_out=adc_data_fin[0]*0.0081f+0.5817f;
-		vol_in=adc_data_fin[1]*0.0081f+0.5817f;
-		curr_in=adc_data_fin[2]*0.0081f+0.5817f;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}

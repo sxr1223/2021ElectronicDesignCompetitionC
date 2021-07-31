@@ -155,6 +155,7 @@ void MX_HRTIM1_Init(void)
   {
     Error_Handler();
   }
+  pCompareCfg.CompareValue = 0xFFDF;
   pCompareCfg.AutoDelayedTimeout = 0x0000;
 
   if (HAL_HRTIM_WaveformCompareConfig(&hhrtim1, HRTIM_TIMERINDEX_TIMER_D, HRTIM_COMPAREUNIT_2, &pCompareCfg) != HAL_OK)
