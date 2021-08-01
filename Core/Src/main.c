@@ -47,15 +47,15 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define DATA_LEN 20
+#define DATA_LEN 1
 #define DATA_CH_NUM 6
 #define MAX_PWM 23040
 
 #define SQRT_3_DIV_2 	0.86602540378f
 #define SQRT_6_DIV_3 	0.81649658093f
-#define SQRT_2			1.41421356237f
-#define SQRT_3 			1.73205080757f
-#define SQRT_6 			2.44948974278f
+#define SQRT_2				1.41421356237f
+#define SQRT_3 				1.73205080757f
+#define SQRT_6 				2.44948974278f
 #define PI_2_DIV_3		2.09439510239f
 #define TWO_DIV_THREE	0.66666666667f
 
@@ -65,9 +65,10 @@
 
 /* USER CODE BEGIN PV */
 
-//ADC buffer
+//ADC buffer and k,b
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
-uint16_t adc_data_fin[DATA_CH_NUM]= {0};
+
+float adc_kb[DATA_CH_NUM][2]={{1,1},{1,1}};
 
 //PID
 pid_type_def curr_q_pid;
@@ -80,41 +81,51 @@ const fp32 curr_q_p_i_d[3]= {0,0.4,0};
 const fp32 curr_d_p_i_d[3]= {0,0.4,0};
 const fp32 vol_d_p_i_d[3]= {0,0.4,0};
 const fp32 vol_q_p_i_d[3]= {0,0.4,0};
-const fp32 vol_DC_p_i_d[3]={0,0.4,0};
+const fp32 vol_DC_p_i_d[3]= {0,0.4,0};
 
-float vol_set=10.0;
+float qd_vol_set[2]= {0,10};
 
 //pwm
-uint16_t pwm[4][2]={0};
+uint16_t pwm[4][2]= {0};
 uint16_t pwm_temp[4];
 
 //vol_in_theta
 float sin_temp,cos_temp;
 
 //sample data
-float abc_curr_samp[3]={1,2,3};
-float al_be_curr_samp[2]={2,4};
-float dq_curr_samp[2]={1,1};
+float abc_curr_samp[3]= {1,2,3};
+float al_be_curr_samp[2]= {2,4};
+float dq_curr_samp[2]= {1,1};
 
-float abc_vol_in[3]={1,2,3};
-float al_be_vol_in[2]={2,4};
-float dq_vol_in[2]={1,1};
+float abc_vol_out[3]= {1,2,3};
+float al_be_vol_out[2]= {2,4};
+float dq_vol_out[2]= {1,1};
 
 float vol_DC_samp;
 
-float module_vol_in;
+float module_vol_out;
 float theta_vol=0.01;
 
 float dq_curr_out[2];
 float al_be_curr_out[2];
 
 //SVPWM
-uint8_t sector;
+uint8_t sector=1;
 float V_DC=10;
 int32_t X,Y,Z;
 uint16_t T_per,T_nex;
 uint16_t T=23040;
 uint16_t T0,T7;
+void (*sector_fun[6])(void);
+
+//pwm_cal_flag
+uint8_t pwm_need_cal_flag=1;
+
+//set_vol_vec
+float theta=0;
+uint16_t step=0;
+
+
 
 /* USER CODE END PV */
 
@@ -165,7 +176,7 @@ void clarke_park_amp(float abc[3],float dq_res[2],float theta)
 }
 
 void iclarke_park_amp(float abc_res[3],float dq[2],float theta)
-{	
+{
 	abc_res[0]=dq[0]*arm_cos_f32(theta)-dq[1]*arm_sin_f32(theta);
 	abc_res[1]=dq[0]*arm_cos_f32(theta-PI_2_DIV_3)-dq[1]*arm_sin_f32(theta-PI_2_DIV_3);
 	abc_res[2]=dq[0]*arm_cos_f32(theta+PI_2_DIV_3)-dq[1]*arm_sin_f32(theta+PI_2_DIV_3);
@@ -173,22 +184,21 @@ void iclarke_park_amp(float abc_res[3],float dq[2],float theta)
 
 void set_PWM(void)
 {
-	for(uint8_t i=0;i<4;i++)
+	for(uint8_t i=0; i<4; i++)
 	{
 		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][0];
-		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][1];
+		hhrtim1.Instance->sTimerxRegs[i].CMP2xR = pwm[i][1];
 	}
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{	
+{
 	if(htim==&htim17)
 	{
-
-		for(uint8_t i=0;i<4;i++)
-			pwm_temp[i]=pwm[i][1]-pwm[i][0];
-		
-		set_PWM();
-
+		if(pwm_need_cal_flag==0)
+		{
+			set_PWM();
+		}
+		pwm_need_cal_flag=1;
 	}
 }
 
@@ -210,21 +220,100 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	static uint16_t i,j;
 	static uint32_t sum;
 	static uint16_t scop[DATA_LEN];
-	
+
 	if(hadc==&hadc1)
 	{
-		for(j=0;j<DATA_CH_NUM;j++)
-		{
-			for(i=0;i<DATA_LEN;i++)
-				scop[i]=adc_data[i][j];
-			bubble(scop,DATA_LEN);
-			for(i=2,sum=0;i<DATA_LEN-2;i++)
-				sum+=scop[i];
-			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
-		}
-		
-		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
+}
+
+void sector_1(void)
+{
+	T_per=Y;
+	T_nex=-X;
+	T0=T7=(T-T_per-T_nex)/2;
+	pwm[2][0]=T0/2;
+	pwm[2][1]=MAX_PWM-T0/2;
+
+	pwm[0][0]=MAX_PWM/2-(T_per+T7)/2;
+	pwm[0][1]=MAX_PWM/2+(T_per+T7)/2;
+
+	pwm[3][0]=MAX_PWM/2-T7/2;
+	pwm[3][1]=MAX_PWM/2+T7/2;
+}
+void sector_2(void)
+{
+	T_per=-Y;
+	T_nex=-Z;
+	T0=T7=(T-T_per-T_nex)/2;
+	pwm[0][0]=T0/2;
+	pwm[0][1]=MAX_PWM-T0/2;
+
+	pwm[3][0]=MAX_PWM/2-(T_per+T7)/2;
+	pwm[3][1]=MAX_PWM/2+(T_per+T7)/2;
+
+	pwm[2][0]=MAX_PWM/2-T7/2;
+	pwm[2][1]=MAX_PWM/2+T7/2;
+}
+
+
+
+void sector_3(void)
+{
+	T_per=Z;
+	T_nex=Y;
+	T0=T7=(T-T_per-T_nex)/2;
+	pwm[0][0]=T0/2;
+	pwm[0][1]=MAX_PWM-T0/2;
+
+	pwm[2][0]=MAX_PWM/2-(T_nex+T7)/2;
+	pwm[2][1]=MAX_PWM/2+(T_nex+T7)/2;
+
+	pwm[3][0]=MAX_PWM/2-T7/2;
+	pwm[3][1]=MAX_PWM/2+T7/2;
+}
+void sector_4(void)
+{
+	T_per=-X;
+	T_nex=Z;
+
+	T0=T7=(T-T_per-T_nex)/2;
+
+	pwm[3][0]=T0/2;
+	pwm[3][1]=MAX_PWM-T0/2;
+
+	pwm[2][0]=MAX_PWM/2-(T_per+T7)/2;
+	pwm[2][1]=MAX_PWM/2+(T_per+T7)/2;
+
+	pwm[0][0]=MAX_PWM/2-T7/2;
+	pwm[0][1]=MAX_PWM/2+T7/2;
+}
+void sector_5(void)
+{
+	T_per=-Z;
+	T_nex=X;
+	T0=T7=(T-T_per-T_nex)/2;
+	pwm[2][0]=T0/2;
+	pwm[2][1]=MAX_PWM-T0/2;
+
+	pwm[3][0]=MAX_PWM/2-(T_nex+T7)/2;
+	pwm[3][1]=MAX_PWM/2+(T_nex+T7)/2;
+
+	pwm[0][0]=MAX_PWM/2-T7/2;
+	pwm[0][1]=MAX_PWM/2+T7/2;
+}
+void sector_6(void)
+{
+	T_per=X;
+	T_nex=-Y;
+	T0=T7=(T-T_per-T_nex)/2;
+	pwm[3][0]=T0/2;
+	pwm[3][1]=MAX_PWM-T0/2;
+
+	pwm[0][0]=MAX_PWM/2-(T_nex+T7)/2;
+	pwm[0][1]=MAX_PWM/2+(T_nex+T7)/2;
+
+	pwm[2][0]=MAX_PWM/2-T7/2;
+	pwm[2][1]=MAX_PWM/2+T7/2;
 }
 /* USER CODE END PFP */
 
@@ -267,6 +356,7 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   MX_TIM17_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
 
 	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,6);
@@ -274,7 +364,7 @@ int main(void)
 	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,1,1);
 	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,1,1);
 	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,1,1);
-	
+
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 
 	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
@@ -298,164 +388,75 @@ int main(void)
 	OLED_printf(0,0,16,"Hello World.");
 
 	HAL_TIM_Base_Start_IT(&htim17);
-	
-	for(uint16_t i=0;i<20000;i++)
-	{
-		clarke_amp(abc_vol_in,al_be_vol_in);
-		
-		arm_sqrt_f32(al_be_vol_in[0]*al_be_vol_in[0]+al_be_vol_in[1]*al_be_vol_in[1],&module_vol_in);
-		sin_temp=al_be_vol_in[1]/module_vol_in;
-		cos_temp=al_be_vol_in[0]/module_vol_in;
-		
-		clarke_amp(abc_curr_samp,al_be_curr_samp);
-		park(al_be_curr_samp,dq_curr_samp);
 
-		PID_calc(&vol_DC_pid,vol_DC_samp,vol_set);
-		
-		PID_calc(&curr_d_pid,dq_curr_samp[0],0);
-		PID_calc(&curr_q_pid,dq_curr_samp[1],vol_DC_pid.out*module_vol_in);
-		
-		dq_curr_out[0]=curr_d_pid.out;
-		dq_curr_out[1]=curr_q_pid.out;
-		ipark(al_be_curr_out,dq_curr_out);
+	sector_fun[0]=sector_1;
+	sector_fun[1]=sector_2;
+	sector_fun[2]=sector_3;
+	sector_fun[3]=sector_4;
+	sector_fun[4]=sector_5;
+	sector_fun[5]=sector_6;
 
-		sector=(al_be_curr_out[0]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
-		
-		X=SQRT_3*al_be_curr_out[1]*T/V_DC;
-		Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
-		Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
-		
-		switch(sector)
-		{
-			case 1:
-			{
-				T_per=Z;
-				T_nex=Y;
-				break;
-			}
-			case 2:
-			{
-				T_per=Y;
-				T_nex=-X;
-				break;
-			}
-			case 3:
-			{
-				T_per=-Z;
-				T_nex=X;
-				break;
-			}
-			case 4:
-			{
-				T_per=-X;
-				T_nex=Z;
-				break;
-			}
-			case 5:
-			{
-				T_per=X;
-				T_nex=-Y;
-				break;
-			}
-			case 6:
-			{
-				T_per=-Y;
-				T_nex=-Z;
-				break;
-			}
-		}
-		
-		T0=T7=(T-T_per-T_nex)/2;
-		switch(sector)
-		{
-			case 1:
-			{
-				pwm[0][0]=T0/2;
-				pwm[0][1]=MAX_PWM-T0/2;
-				
-				pwm[2][0]=MAX_PWM/2-(T_nex+T7)/2;
-				pwm[2][1]=MAX_PWM/2+(T_nex+T7)/2;
-				
-				pwm[3][0]=MAX_PWM/2-T7/2;
-				pwm[3][1]=MAX_PWM/2+T7/2;
-				
-				break;
-			}
-			case 2:
-			{
-				pwm[2][0]=T0/2;
-				pwm[2][1]=MAX_PWM-T0/2;
-				
-				pwm[0][0]=MAX_PWM/2-(T_per+T7)/2;
-				pwm[0][1]=MAX_PWM/2+(T_per+T7)/2;
-				
-				pwm[3][0]=MAX_PWM/2-T7/2;
-				pwm[3][1]=MAX_PWM/2+T7/2;
 
-				break;
-			}
-			case 3:
-			{
-				pwm[2][0]=T0/2;
-				pwm[2][1]=MAX_PWM-T0/2;
-				
-				pwm[3][0]=MAX_PWM/2-(T_nex+T7)/2;
-				pwm[3][1]=MAX_PWM/2+(T_nex+T7)/2;
-				
-				pwm[0][0]=MAX_PWM/2-T7/2;
-				pwm[0][1]=MAX_PWM/2+T7/2;
-
-				break;
-			}
-			case 4:
-			{
-				pwm[3][0]=T0/2;
-				pwm[3][1]=MAX_PWM-T0/2;
-				
-				pwm[2][0]=MAX_PWM/2-(T_per+T7)/2;
-				pwm[2][1]=MAX_PWM/2+(T_per+T7)/2;
-				
-				pwm[0][0]=MAX_PWM/2-T7/2;
-				pwm[0][1]=MAX_PWM/2+T7/2;
-
-				break;
-			}
-			case 5:
-			{
-				pwm[3][0]=T0/2;
-				pwm[3][1]=MAX_PWM-T0/2;
-				
-				pwm[0][0]=MAX_PWM/2-(T_nex+T7)/2;
-				pwm[0][1]=MAX_PWM/2+(T_nex+T7)/2;
-				
-				pwm[2][0]=MAX_PWM/2-T7/2;
-				pwm[2][1]=MAX_PWM/2+T7/2;
-
-				break;
-			}
-			case 6:
-			{
-				pwm[0][0]=T0/2;
-				pwm[0][1]=MAX_PWM-T0/2;
-				
-				pwm[3][0]=MAX_PWM/2-(T_per+T7)/2;
-				pwm[3][1]=MAX_PWM/2+(T_per+T7)/2;
-				
-				pwm[2][0]=MAX_PWM/2-T7/2;
-				pwm[2][1]=MAX_PWM/2+T7/2;
-
-				break;
-			}
-		}
-	}
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		clarke_amp(abc_curr_samp,al_be_curr_samp);
-		iclarke_amp(abc_curr_samp,al_be_curr_samp);
+		if(pwm_need_cal_flag==1)
+		{
+			for(uint8_t i=0;i<3;i++)
+			{
+				//abc_vol_out[i]=((float)adc_data[0][i])*adc_kb[i][0]-adc_kb[i][1];
+				abc_vol_out[i]=adc_data[0][i];
+				abc_curr_samp[i]=adc_data[0][i+3];
+			}
+			
+			clarke_amp(abc_vol_out,al_be_vol_out);
+			clarke_amp(abc_curr_samp,al_be_curr_samp);
+
+			sin_temp=arm_sin_f32(theta);
+			cos_temp=arm_cos_f32(theta);
+			theta=0.01570796327f*step;
+			step++;
+			if(step==400)
+			{
+				step=0;
+				sector++;
+			}
+			if(sector==6)
+				sector=1;
+
+			park(al_be_curr_samp,dq_curr_samp);
+			park(al_be_vol_out,dq_vol_out);
+
+			PID_calc(&vol_d_pid,dq_vol_out[0],qd_vol_set[0]);
+			PID_calc(&vol_q_pid,dq_vol_out[1],dq_vol_out[1]);
+
+			PID_calc(&curr_d_pid,dq_curr_samp[0],vol_q_pid.out);
+			PID_calc(&curr_q_pid,dq_curr_samp[1],vol_d_pid.out);
+
+//			dq_curr_out[0]=curr_d_pid.out;
+//			dq_curr_out[1]=curr_q_pid.out;
+			
+			dq_curr_out[0]=qd_vol_set[0];
+			dq_curr_out[1]=dq_vol_out[1];
+			
+			ipark(al_be_curr_out,dq_curr_out);
+
+			//sector=(al_be_curr_out[0]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
+
+			X=SQRT_3*al_be_curr_out[1]*T/V_DC;
+			Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
+			Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
+
+			sector_fun[sector-1]();
+
+			pwm_need_cal_flag=0;
+			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
+		}
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
