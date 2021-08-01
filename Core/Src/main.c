@@ -72,7 +72,7 @@ float vol_in=0;
 float curr_in=0;
 
 uint16_t pwm[4][2]={0};
-float modul=1;
+float modul=0.9;
 uint16_t temp[4];
 /* USER CODE END PV */
 
@@ -85,7 +85,7 @@ void set_PWM(void)
 	for(uint8_t i=0;i<4;i++)
 	{
 		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][0];
-		hhrtim1.Instance->sTimerxRegs[i].CMP1xR = pwm[i][1];
+		hhrtim1.Instance->sTimerxRegs[i].CMP2xR = pwm[i][1];
 	}
 }
 
@@ -96,8 +96,7 @@ void soft_start(void)
 	{
 		HAL_TIM_Base_Stop_IT(&htim17);
 		__HAL_TIM_SET_COUNTER(&htim17,0);
-
-
+		
 		for(pwm_tem=0; pwm_tem<9000; pwm_tem+=200)
 		{
 
@@ -122,8 +121,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	
 	if(htim==&htim17)
 	{
-		T_per=modul*MAX_PWM*sin(PI/3.0f*(1.0f-step/400.0f));
-		T_nex=modul*MAX_PWM*sin(PI/3.0f*step/400.0f);
+		T_per=modul*MAX_PWM*sin(PI/3.0f*(1.0f-step/60.0f));
+		T_nex=modul*MAX_PWM*sin(PI/3.0f*step/60.0f);
 		T0_7=MAX_PWM-T_nex-T_per;
 		T0=T7=T0_7/2;
 		
@@ -215,7 +214,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		set_PWM();
 
 		step++;
-		if(step==400)
+		if(step==60)
 		{
 			step=0;
 			sector++;
@@ -223,6 +222,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		
 		if(sector==7)
 			sector=1;
+		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 	}
 }
 
@@ -325,7 +325,7 @@ int main(void)
 
 	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 
-	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+	//HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 
 	OLED_Init();
 	OLED_Display_On();
