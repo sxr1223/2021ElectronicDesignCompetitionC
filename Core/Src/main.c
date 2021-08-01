@@ -77,13 +77,13 @@ pid_type_def curr_d_pid;
 pid_type_def vol_d_pid;
 pid_type_def vol_DC_pid;
 
-const fp32 curr_q_p_i_d[3]= {0,0.4,0};
-const fp32 curr_d_p_i_d[3]= {0,0.4,0};
-const fp32 vol_d_p_i_d[3]= {0,0.4,0};
-const fp32 vol_q_p_i_d[3]= {0,0.4,0};
-const fp32 vol_DC_p_i_d[3]= {0,0.4,0};
+const fp32 curr_q_p_i_d[3]= {0,0.01f,0};
+const fp32 curr_d_p_i_d[3]= {0,0.01f,0};
+const fp32 vol_d_p_i_d[3]= {0,0.01f,0};
+const fp32 vol_q_p_i_d[3]= {0,0.01f,0};
+const fp32 vol_DC_p_i_d[3]= {0,0.01f,0};
 
-float qd_vol_set[2]= {0,10};
+float dq_vol_set[2]= {0,5};
 
 //pwm
 uint16_t pwm[4][2]= {0};
@@ -111,7 +111,7 @@ float al_be_curr_out[2];
 
 //SVPWM
 uint8_t sector=1;
-float V_DC=10;
+float V_DC=15;
 int32_t X,Y,Z;
 uint16_t T_per,T_nex;
 uint16_t T=23040;
@@ -229,7 +229,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 void sector_1(void)
 {
 	T_per=Y;
-	T_nex=-X;
+	T_nex=Z;
 	T0=T7=(T-T_per-T_nex)/2;
 	pwm[2][0]=T0/2;
 	pwm[2][1]=MAX_PWM-T0/2;
@@ -242,8 +242,8 @@ void sector_1(void)
 }
 void sector_2(void)
 {
-	T_per=-Y;
-	T_nex=-Z;
+	T_per=-X;
+	T_nex=Y;
 	T0=T7=(T-T_per-T_nex)/2;
 	pwm[0][0]=T0/2;
 	pwm[0][1]=MAX_PWM-T0/2;
@@ -259,8 +259,8 @@ void sector_2(void)
 
 void sector_3(void)
 {
-	T_per=Z;
-	T_nex=Y;
+	T_per=-Z;
+	T_nex=X;
 	T0=T7=(T-T_per-T_nex)/2;
 	pwm[0][0]=T0/2;
 	pwm[0][1]=MAX_PWM-T0/2;
@@ -273,8 +273,8 @@ void sector_3(void)
 }
 void sector_4(void)
 {
-	T_per=-X;
-	T_nex=Z;
+	T_per=Z;
+	T_nex=-X;
 
 	T0=T7=(T-T_per-T_nex)/2;
 
@@ -289,8 +289,8 @@ void sector_4(void)
 }
 void sector_5(void)
 {
-	T_per=-Z;
-	T_nex=X;
+	T_per=X;
+	T_nex=-Y;
 	T0=T7=(T-T_per-T_nex)/2;
 	pwm[2][0]=T0/2;
 	pwm[2][1]=MAX_PWM-T0/2;
@@ -303,8 +303,8 @@ void sector_5(void)
 }
 void sector_6(void)
 {
-	T_per=X;
-	T_nex=-Y;
+	T_per=-Y;
+	T_nex=-Z;
 	T0=T7=(T-T_per-T_nex)/2;
 	pwm[3][0]=T0/2;
 	pwm[3][1]=MAX_PWM-T0/2;
@@ -395,7 +395,8 @@ int main(void)
 	sector_fun[3]=sector_4;
 	sector_fun[4]=sector_5;
 	sector_fun[5]=sector_6;
-
+	
+	pwm[1][1]=11520;
 
   /* USER CODE END 2 */
 
@@ -417,44 +418,47 @@ int main(void)
 
 			sin_temp=arm_sin_f32(theta);
 			cos_temp=arm_cos_f32(theta);
-			theta=0.01570796327f*step;
+			theta+=0.00261799388;
 			step++;
-			if(step==400)
+			if(step==2400)
 			{
 				step=0;
-				sector++;
+				theta=0;
 			}
-			if(sector==6)
-				sector=1;
 
 			park(al_be_curr_samp,dq_curr_samp);
 			park(al_be_vol_out,dq_vol_out);
 
-			PID_calc(&vol_d_pid,dq_vol_out[0],qd_vol_set[0]);
-			PID_calc(&vol_q_pid,dq_vol_out[1],dq_vol_out[1]);
+			PID_calc(&vol_d_pid,dq_vol_out[0],dq_vol_set[0]);
+			PID_calc(&vol_q_pid,dq_vol_out[1],dq_vol_set[1]);
 
 			PID_calc(&curr_d_pid,dq_curr_samp[0],vol_q_pid.out);
 			PID_calc(&curr_q_pid,dq_curr_samp[1],vol_d_pid.out);
 
-//			dq_curr_out[0]=curr_d_pid.out;
-//			dq_curr_out[1]=curr_q_pid.out;
+			dq_curr_out[0]=curr_d_pid.out;
+			dq_curr_out[1]=curr_q_pid.out;
 			
-			dq_curr_out[0]=qd_vol_set[0];
-			dq_curr_out[1]=dq_vol_out[1];
+//			dq_curr_out[0]=dq_vol_set[0];
+//			dq_curr_out[1]=dq_vol_set[1];
 			
 			ipark(al_be_curr_out,dq_curr_out);
 
-			//sector=(al_be_curr_out[0]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
+			sector=(al_be_curr_out[1]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
 
 			X=SQRT_3*al_be_curr_out[1]*T/V_DC;
-			Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
-			Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC/TWO_DIV_THREE;
+			Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC*1.5f;
+			Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC*1.5f;
 
 			sector_fun[sector-1]();
-
+			
+//			for(uint8_t i=0;i<4;i++)
+//				pwm_temp[i]=pwm[i][1]-pwm[i][0];
+//				if(pwm_temp[3]==6022)
+//					pwm_temp[3]=0;
+				
 			pwm_need_cal_flag=0;
 			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
+//			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 		}
 
     /* USER CODE END WHILE */
