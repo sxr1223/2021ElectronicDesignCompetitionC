@@ -65,6 +65,20 @@
 
 /* USER CODE BEGIN PV */
 
+typedef struct
+{
+    fp32 out;          //滤波输出的数据
+    fp32 num[2];
+} first_order_filter_type_t;
+
+first_order_filter_type_t adc_fliter_first_order_LP[6]=
+{	{0,{0.0099009901f,0.9900990099f}},
+	{0,{0.0099009901f,0.9900990099f}},
+	{0,{0.0099009901f,0.9900990099f}},
+	{0,{0.0099009901f,0.9900990099f}},
+	{0,{0.0099009901f,0.9900990099f}},
+	{0,{0.0099009901f,0.9900990099f}}};
+
 //ADC buffer and k,b
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 
@@ -131,7 +145,14 @@ uint16_t step=0;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+
 /* USER CODE BEGIN PFP */
+
+void first_order_filter(first_order_filter_type_t *first_order_filter_type, fp32 input)
+{
+    first_order_filter_type->out =input*(first_order_filter_type->num[0])+(first_order_filter_type->out)*(first_order_filter_type->num[1]);
+}
+
 void clarke_amp(float abc[3],float alph_beta_res[2])
 {
 	alph_beta_res[0]=(2.0f*abc[0]-abc[1]-abc[2])/3.0f;
@@ -408,9 +429,10 @@ int main(void)
 		{
 			for(uint8_t i=0;i<3;i++)
 			{
-				//abc_vol_out[i]=((float)adc_data[0][i])*adc_kb[i][0]-adc_kb[i][1];
-				abc_vol_out[i]=adc_data[0][i];
-				abc_curr_samp[i]=adc_data[0][i+3];
+				first_order_filter(&adc_fliter_first_order_LP[i],adc_data[0][i]);
+				abc_vol_out[i]=adc_fliter_first_order_LP[i].out;
+				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_data[0][i+3]);
+				abc_curr_samp[i]=adc_fliter_first_order_LP[i+3].out;
 			}
 			
 			clarke_amp(abc_vol_out,al_be_vol_out);
@@ -438,8 +460,8 @@ int main(void)
 			dq_curr_out[0]=curr_d_pid.out;
 			dq_curr_out[1]=curr_q_pid.out;
 			
-//			dq_curr_out[0]=dq_vol_set[0];
-//			dq_curr_out[1]=dq_vol_set[1];
+			dq_curr_out[0]=dq_vol_set[0];
+			dq_curr_out[1]=dq_vol_set[1];
 			
 			ipark(al_be_curr_out,dq_curr_out);
 
@@ -458,7 +480,7 @@ int main(void)
 				
 			pwm_need_cal_flag=0;
 			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-//			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
+			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 		}
 
     /* USER CODE END WHILE */
