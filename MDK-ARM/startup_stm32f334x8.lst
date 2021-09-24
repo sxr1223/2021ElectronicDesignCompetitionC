@@ -560,7 +560,7 @@ ARM Macro Assembler    Page 9
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp.sp --depen
 d=f334\startup_stm32f334x8.d -of334\startup_stm32f334x8.o -I.\RTE\_F334 -IC:\Us
 ers\sxr\AppData\Local\Arm\Packs\ARM\CMSIS\5.8.0\CMSIS\Core\Include -IC:\Users\s
-xr\AppData\Local\Arm\Packs\Keil\STM32F3xx_DFP\2.1.0\Drivers\CMSIS\Device\ST\STM
+xr\AppData\Local\Arm\Packs\Keil\STM32F3xx_DFP\2.2.0\Drivers\CMSIS\Device\ST\STM
 32F3xx\Include --predefine="__UVISION_VERSION SETA 533" --predefine="_RTE_ SETA
  1" --predefine="STM32F334x8 SETA 1" --predefine="_RTE_ SETA 1" --list=startup_
 stm32f334x8.lst startup_stm32f334x8.s

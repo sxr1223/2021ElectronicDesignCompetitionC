@@ -20,6 +20,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "comp.h"
+#include "dac.h"
 #include "dma.h"
 #include "hrtim.h"
 #include "hrtim.h"
@@ -53,9 +55,9 @@
 
 #define SQRT_3_DIV_2 	0.86602540378f
 #define SQRT_6_DIV_3 	0.81649658093f
-#define SQRT_2				1.41421356237f
-#define SQRT_3 				1.73205080757f
-#define SQRT_6 				2.44948974278f
+#define SQRT_2			1.41421356237f
+#define SQRT_3 			1.73205080757f
+#define SQRT_6 			2.44948974278f
 #define PI_2_DIV_3		2.09439510239f
 #define TWO_DIV_THREE	0.66666666667f
 
@@ -79,10 +81,19 @@ first_order_filter_type_t adc_fliter_first_order_LP[6]=
 	{0,{0.0099009901f,0.9900990099f}},
 	{0,{0.0099009901f,0.9900990099f}}};
 
-//ADC buffer and k,b
-uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
+//ADC buffer and k(x-b)
+//uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
+uint16_t adc_data[DATA_CH_NUM]= {0};
+float adc_kb[DATA_CH_NUM][2]={
+	{1,0},
+	{1,0},
+	{1,0},
+	{1,0},
+	{1,0},
+	{1,0}
+};
 
-float adc_kb[DATA_CH_NUM][2]={{1,1},{1,1}};
+uint16_t temp_vol_samp[3];
 
 //PID
 pid_type_def curr_q_pid;
@@ -91,13 +102,30 @@ pid_type_def curr_d_pid;
 pid_type_def vol_d_pid;
 pid_type_def vol_DC_pid;
 
-const fp32 curr_q_p_i_d[3]= {0,0.01f,0};
-const fp32 curr_d_p_i_d[3]= {0,0.01f,0};
-const fp32 vol_d_p_i_d[3]= {0,0.01f,0};
-const fp32 vol_q_p_i_d[3]= {0,0.01f,0};
-const fp32 vol_DC_p_i_d[3]= {0,0.01f,0};
+const fp32 curr_q_p_i_d[3]= {0.0001,0.00005,0};
+const fp32 curr_d_p_i_d[3]= {0.0001,0.00005,0};
+const fp32 vol_d_p_i_d[3]=  {0,0.00005,0};
+const fp32 vol_q_p_i_d[3]=  {0,0.00005,0};
+const fp32 vol_DC_p_i_d[3]= {0,0.0001,0};
 
-float dq_vol_set[2]= {0,5};
+const fp32 curr_d_max_out=20;
+const fp32 curr_q_max_out=20;
+const fp32 curr_d_imax_out=18;
+const fp32 curr_q_imax_out=18;
+
+const fp32 vol_d_max_out=5000;
+const fp32 vol_q_max_out=5000;
+const fp32 vol_d_imax_out=4000;
+const fp32 vol_q_imax_out=4000;
+
+const fp32 vol_DC_max_out=10;
+const fp32 vol_DC_imax_out=10;
+
+float dq_vol_set[2]= {500,0};
+float dq_vol_set_open_loop[2]= {0,7};
+
+//qd filter
+float qd_vol_buff;
 
 //pwm
 uint16_t pwm[4][2]= {0};
@@ -107,21 +135,24 @@ uint16_t pwm_temp[4];
 float sin_temp,cos_temp;
 
 //sample data
-float abc_curr_samp[3]= {1,2,3};
-float al_be_curr_samp[2]= {2,4};
-float dq_curr_samp[2]= {1,1};
+float abc_curr_out_samp[3]= {1,2,3};
+float al_be_curr_out_samp[2]= {2,4};
+float dq_curr_out_samp[2]= {1,1};
 
-float abc_vol_out[3]= {1,2,3};
-float al_be_vol_out[2]= {2,4};
-float dq_vol_out[2]= {1,1};
+float abc_vol_out_samp[3]= {1,2,3};
+float al_be_vol_out_samp[2]= {2,4};
+float dq_vol_out_samp[2]= {1,1};
 
 float vol_DC_samp;
 
 float module_vol_out;
 float theta_vol=0.01;
 
-float dq_curr_out[2];
-float al_be_curr_out[2];
+float dq_curr_pid_out[2];
+float al_be_curr_pid_out[2];
+
+float last_dq_vol_out_samp[2];
+float last_dq_curr_out_samp[2];
 
 //SVPWM
 uint8_t sector=1;
@@ -139,13 +170,14 @@ uint8_t pwm_need_cal_flag=1;
 float theta=0;
 uint16_t step=0;
 
-
+//cail
+uint8_t cail_time;
+uint16_t cail_res[DATA_CH_NUM]= {0,0,0,0,0,0};
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-
 /* USER CODE BEGIN PFP */
 
 void first_order_filter(first_order_filter_type_t *first_order_filter_type, fp32 input)
@@ -203,6 +235,15 @@ void iclarke_park_amp(float abc_res[3],float dq[2],float theta)
 	abc_res[2]=dq[0]*arm_cos_f32(theta+PI_2_DIV_3)-dq[1]*arm_sin_f32(theta+PI_2_DIV_3);
 }
 
+void reset(void)
+{
+	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,9);
+	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,10,9);
+	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,8,7.5);
+	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,8,7.5);
+	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,11520,11520);
+}
+
 void set_PWM(void)
 {
 	for(uint8_t i=0; i<4; i++)
@@ -218,8 +259,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(pwm_need_cal_flag==0)
 		{
 			set_PWM();
+			pwm_need_cal_flag=1;
 		}
-		pwm_need_cal_flag=1;
+		
 	}
 }
 
@@ -236,30 +278,19 @@ void bubble(uint16_t *a,uint8_t num)
 			}
 }
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-	static uint16_t i,j;
-	static uint32_t sum;
-	static uint16_t scop[DATA_LEN];
-
-	if(hadc==&hadc1)
-	{
-	}
-}
-
 void sector_1(void)
 {
 	T_per=Y;
 	T_nex=Z;
 	T0=T7=(T-T_per-T_nex)/2;
-	pwm[2][0]=T0/2;
-	pwm[2][1]=MAX_PWM-T0/2;
+	pwm[1][0]=T0/2;
+	pwm[1][1]=MAX_PWM-T0/2;
 
 	pwm[0][0]=MAX_PWM/2-(T_per+T7)/2;
 	pwm[0][1]=MAX_PWM/2+(T_per+T7)/2;
 
-	pwm[3][0]=MAX_PWM/2-T7/2;
-	pwm[3][1]=MAX_PWM/2+T7/2;
+	pwm[2][0]=MAX_PWM/2-T7/2;
+	pwm[2][1]=MAX_PWM/2+T7/2;
 }
 void sector_2(void)
 {
@@ -269,11 +300,11 @@ void sector_2(void)
 	pwm[0][0]=T0/2;
 	pwm[0][1]=MAX_PWM-T0/2;
 
-	pwm[3][0]=MAX_PWM/2-(T_per+T7)/2;
-	pwm[3][1]=MAX_PWM/2+(T_per+T7)/2;
+	pwm[2][0]=MAX_PWM/2-(T_per+T7)/2;
+	pwm[2][1]=MAX_PWM/2+(T_per+T7)/2;
 
-	pwm[2][0]=MAX_PWM/2-T7/2;
-	pwm[2][1]=MAX_PWM/2+T7/2;
+	pwm[1][0]=MAX_PWM/2-T7/2;
+	pwm[1][1]=MAX_PWM/2+T7/2;
 }
 
 
@@ -286,11 +317,11 @@ void sector_3(void)
 	pwm[0][0]=T0/2;
 	pwm[0][1]=MAX_PWM-T0/2;
 
-	pwm[2][0]=MAX_PWM/2-(T_nex+T7)/2;
-	pwm[2][1]=MAX_PWM/2+(T_nex+T7)/2;
+	pwm[1][0]=MAX_PWM/2-(T_nex+T7)/2;
+	pwm[1][1]=MAX_PWM/2+(T_nex+T7)/2;
 
-	pwm[3][0]=MAX_PWM/2-T7/2;
-	pwm[3][1]=MAX_PWM/2+T7/2;
+	pwm[2][0]=MAX_PWM/2-T7/2;
+	pwm[2][1]=MAX_PWM/2+T7/2;
 }
 void sector_4(void)
 {
@@ -299,11 +330,11 @@ void sector_4(void)
 
 	T0=T7=(T-T_per-T_nex)/2;
 
-	pwm[3][0]=T0/2;
-	pwm[3][1]=MAX_PWM-T0/2;
+	pwm[2][0]=T0/2;
+	pwm[2][1]=MAX_PWM-T0/2;
 
-	pwm[2][0]=MAX_PWM/2-(T_per+T7)/2;
-	pwm[2][1]=MAX_PWM/2+(T_per+T7)/2;
+	pwm[1][0]=MAX_PWM/2-(T_per+T7)/2;
+	pwm[1][1]=MAX_PWM/2+(T_per+T7)/2;
 
 	pwm[0][0]=MAX_PWM/2-T7/2;
 	pwm[0][1]=MAX_PWM/2+T7/2;
@@ -313,11 +344,11 @@ void sector_5(void)
 	T_per=X;
 	T_nex=-Y;
 	T0=T7=(T-T_per-T_nex)/2;
-	pwm[2][0]=T0/2;
-	pwm[2][1]=MAX_PWM-T0/2;
+	pwm[1][0]=T0/2;
+	pwm[1][1]=MAX_PWM-T0/2;
 
-	pwm[3][0]=MAX_PWM/2-(T_nex+T7)/2;
-	pwm[3][1]=MAX_PWM/2+(T_nex+T7)/2;
+	pwm[2][0]=MAX_PWM/2-(T_nex+T7)/2;
+	pwm[2][1]=MAX_PWM/2+(T_nex+T7)/2;
 
 	pwm[0][0]=MAX_PWM/2-T7/2;
 	pwm[0][1]=MAX_PWM/2+T7/2;
@@ -327,14 +358,14 @@ void sector_6(void)
 	T_per=-Y;
 	T_nex=-Z;
 	T0=T7=(T-T_per-T_nex)/2;
-	pwm[3][0]=T0/2;
-	pwm[3][1]=MAX_PWM-T0/2;
+	pwm[2][0]=T0/2;
+	pwm[2][1]=MAX_PWM-T0/2;
 
 	pwm[0][0]=MAX_PWM/2-(T_nex+T7)/2;
 	pwm[0][1]=MAX_PWM/2+(T_nex+T7)/2;
 
-	pwm[2][0]=MAX_PWM/2-T7/2;
-	pwm[2][1]=MAX_PWM/2+T7/2;
+	pwm[1][0]=MAX_PWM/2-T7/2;
+	pwm[1][1]=MAX_PWM/2+T7/2;
 }
 /* USER CODE END PFP */
 
@@ -378,13 +409,16 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM17_Init();
   MX_ADC2_Init();
+  MX_COMP2_Init();
+  MX_COMP6_Init();
+  MX_DAC1_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,6);
-	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,23040/2,23040/2);
-	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,1,1);
-	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,1,1);
-	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,1,1);
+	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,vol_d_max_out,vol_d_imax_out);
+	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,vol_q_max_out,vol_q_imax_out);
+	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,curr_q_max_out,curr_q_imax_out);
+	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,curr_d_max_out,curr_d_imax_out);
+	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,vol_DC_max_out,vol_DC_imax_out);
 
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 
@@ -402,11 +436,9 @@ int main(void)
 
 	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 
-	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-
-	OLED_Init();
-	OLED_Display_On();
-	OLED_printf(0,0,16,"Hello World.");
+//	OLED_Init();
+//	OLED_Display_On();
+//	OLED_printf(0,0,16,"Hello World.");
 
 	HAL_TIM_Base_Start_IT(&htim17);
 
@@ -417,8 +449,27 @@ int main(void)
 	sector_fun[4]=sector_5;
 	sector_fun[5]=sector_6;
 	
-	pwm[1][1]=11520;
-
+	pwm[3][1]=32000/2;
+	set_PWM();
+	
+	pwm_need_cal_flag=0;
+	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+	
+	
+	for(cail_time=0;cail_time<100;)
+	{
+		if(pwm_need_cal_flag==1)
+		{
+			for(uint8_t i=0;i<DATA_CH_NUM;i++)
+				cail_res[i]+=adc_data[i];
+			cail_time++;
+			pwm_need_cal_flag=0;
+		}
+	}
+	
+	for(uint8_t i=0;i<DATA_CH_NUM;i++)
+		cail_res[i]=cail_res[i]/100.0f;
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -429,57 +480,77 @@ int main(void)
 		{
 			for(uint8_t i=0;i<3;i++)
 			{
-				first_order_filter(&adc_fliter_first_order_LP[i],adc_data[0][i]);
-				abc_vol_out[i]=adc_fliter_first_order_LP[i].out;
-				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_data[0][i+3]);
-				abc_curr_samp[i]=adc_fliter_first_order_LP[i+3].out;
+//				first_order_filter(&adc_fliter_first_order_LP[i],adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]));
+//				abc_vol_out_samp[i]=adc_fliter_first_order_LP[i].out;
+//				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]));
+//				abc_curr_out_samp[i]=adc_fliter_first_order_LP[i+3].out;
+				
+//				abc_vol_out_samp[i]=adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]);
+//				abc_curr_out_samp[i]=adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]);
+				abc_vol_out_samp[i]=(adc_data[i]-cail_res[i]);
+				abc_curr_out_samp[i]=(adc_data[i+3]-cail_res[i+3]);
 			}
 			
-			clarke_amp(abc_vol_out,al_be_vol_out);
-			clarke_amp(abc_curr_samp,al_be_curr_samp);
+			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+			
+			clarke_amp(abc_vol_out_samp,al_be_vol_out_samp);
+			clarke_amp(abc_curr_out_samp,al_be_curr_out_samp);
 
 			sin_temp=arm_sin_f32(theta);
 			cos_temp=arm_cos_f32(theta);
-			theta+=0.00261799388;
+			theta+=0.01745329252f;
 			step++;
-			if(step==2400)
+			if(step==360)
 			{
 				step=0;
-				theta=0;
+				theta=0.0f;
 			}
 
-			park(al_be_curr_samp,dq_curr_samp);
-			park(al_be_vol_out,dq_vol_out);
-
-			PID_calc(&vol_d_pid,dq_vol_out[0],dq_vol_set[0]);
-			PID_calc(&vol_q_pid,dq_vol_out[1],dq_vol_set[1]);
-
-			PID_calc(&curr_d_pid,dq_curr_samp[0],vol_q_pid.out);
-			PID_calc(&curr_q_pid,dq_curr_samp[1],vol_d_pid.out);
-
-			dq_curr_out[0]=curr_d_pid.out;
-			dq_curr_out[1]=curr_q_pid.out;
+			park(al_be_curr_out_samp,dq_curr_out_samp);
+			park(al_be_vol_out_samp,dq_vol_out_samp);
 			
-			dq_curr_out[0]=dq_vol_set[0];
-			dq_curr_out[1]=dq_vol_set[1];
+			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
+			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
+			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
+			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
 			
-			ipark(al_be_curr_out,dq_curr_out);
+//			if(fabs(dq_curr_out_samp[0]-last_dq_curr_out_samp[0])>150)
+//				dq_curr_out_samp[0]=last_dq_curr_out_samp[0];
+//			else
+//				last_dq_curr_out_samp[0]=dq_curr_out_samp[0];
+//			
+//			if(fabs(dq_curr_out_samp[1]-last_dq_curr_out_samp[1])>150)
+//				dq_curr_out_samp[1]=last_dq_curr_out_samp[1];
+//			else
+//				last_dq_curr_out_samp[1]=dq_curr_out_samp[1];
+			
+			PID_calc(&vol_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
+			PID_calc(&vol_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
 
-			sector=(al_be_curr_out[1]>0)|((SQRT_3*al_be_curr_out[0]-al_be_curr_out[1]>0)<<1)|((SQRT_3*al_be_curr_out[0]+al_be_curr_out[1]<0)<<2);
+			PID_calc(&curr_d_pid,dq_curr_out_samp[0],vol_d_pid.out);
+			PID_calc(&curr_q_pid,dq_curr_out_samp[1],vol_q_pid.out);
+			
+//			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
+//			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
 
-			X=SQRT_3*al_be_curr_out[1]*T/V_DC;
-			Y=(al_be_curr_out[1]/SQRT_3+al_be_curr_out[0])*T/V_DC*1.5f;
-			Z=(al_be_curr_out[1]/SQRT_3-al_be_curr_out[0])*T/V_DC*1.5f;
+			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
+			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
+			
+//			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
+//			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
+			
+			ipark(al_be_curr_pid_out,dq_curr_pid_out);
+
+			sector=(al_be_curr_pid_out[1]>0)|((SQRT_3*al_be_curr_pid_out[0]-al_be_curr_pid_out[1]>0)<<1)|((SQRT_3*al_be_curr_pid_out[0]+al_be_curr_pid_out[1]<0)<<2);
+
+			X=SQRT_3*al_be_curr_pid_out[1]*T/V_DC;
+			Y=(al_be_curr_pid_out[1]/SQRT_3+al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
+			Z=(al_be_curr_pid_out[1]/SQRT_3-al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
 
 			sector_fun[sector-1]();
-			
-//			for(uint8_t i=0;i<4;i++)
-//				pwm_temp[i]=pwm[i][1]-pwm[i][0];
-//				if(pwm_temp[3]==6022)
-//					pwm_temp[3]=0;
-				
+
 			pwm_need_cal_flag=0;
-			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+			
 			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 		}
 
