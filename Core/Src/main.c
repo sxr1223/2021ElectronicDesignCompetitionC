@@ -73,14 +73,28 @@ typedef struct
     fp32 num[2];
 } first_order_filter_type_t;
 
+#define AVERAGE_FILITER_NUM 10
+typedef struct
+{
+	float data[AVERAGE_FILITER_NUM];
+	float sum;
+	float out;
+	uint8_t index;
+} averge_filter_type_t;
+
 first_order_filter_type_t adc_fliter_first_order_LP[6]=
 {	{0,{0.0099009901f,0.9900990099f}},
 	{0,{0.0099009901f,0.9900990099f}},
 	{0,{0.0099009901f,0.9900990099f}},
 	{0,{0.0099009901f,0.9900990099f}},
 	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}}};
+	{0,{0.0099009901f,0.9900990099f}}
+};
 
+averge_filter_type_t vol_d_samp_ave_filter={0};
+averge_filter_type_t vol_q_samp_ave_filter={0};
+averge_filter_type_t curr_d_samp_ave_filter={0};
+averge_filter_type_t curr_q_samp_ave_filter={0};
 //ADC buffer and k(x-b)
 //uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data[DATA_CH_NUM]= {0};
@@ -179,6 +193,14 @@ uint16_t cail_res[DATA_CH_NUM]= {0,0,0,0,0,0};
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+void average_filiter(averge_filter_type_t *temp,float input)
+{
+	temp->index=(temp->index+1)%AVERAGE_FILITER_NUM;
+	temp->sum=temp->sum-temp->data[temp->index]+input;
+	temp->data[temp->index]=input;
+	temp->out=temp->sum/AVERAGE_FILITER_NUM;
+}
 
 void first_order_filter(first_order_filter_type_t *first_order_filter_type, fp32 input)
 {
@@ -509,10 +531,15 @@ int main(void)
 			park(al_be_curr_out_samp,dq_curr_out_samp);
 			park(al_be_vol_out_samp,dq_vol_out_samp);
 			
-			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
-			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
-			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
-			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
+//			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
+//			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
+//			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
+//			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
+			
+			average_filiter(&vol_d_samp_ave_filter,-dq_vol_out_samp[0]);
+			average_filiter(&vol_q_samp_ave_filter,-dq_vol_out_samp[1]);
+			average_filiter(&curr_d_samp_ave_filter,-dq_curr_out_samp[0]);
+			average_filiter(&curr_q_samp_ave_filter,-dq_curr_out_samp[1]);
 			
 //			if(fabs(dq_curr_out_samp[0]-last_dq_curr_out_samp[0])>150)
 //				dq_curr_out_samp[0]=last_dq_curr_out_samp[0];
@@ -524,11 +551,11 @@ int main(void)
 //			else
 //				last_dq_curr_out_samp[1]=dq_curr_out_samp[1];
 			
-			PID_calc(&vol_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
-			PID_calc(&vol_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
+			PID_calc(&vol_d_pid,vol_d_samp_ave_filter.out,dq_vol_set[0]);
+			PID_calc(&vol_q_pid,vol_q_samp_ave_filter.out,dq_vol_set[1]);
 
-			PID_calc(&curr_d_pid,dq_curr_out_samp[0],vol_d_pid.out);
-			PID_calc(&curr_q_pid,dq_curr_out_samp[1],vol_q_pid.out);
+			PID_calc(&curr_d_pid,curr_d_samp_ave_filter.out,vol_d_pid.out);
+			PID_calc(&curr_q_pid,curr_q_samp_ave_filter.out,vol_q_pid.out);
 			
 //			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
 //			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
