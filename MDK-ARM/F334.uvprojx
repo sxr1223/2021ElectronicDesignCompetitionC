@@ -16,7 +16,7 @@
         <TargetCommonOption>
           <Device>STM32F334C8Tx</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32F3xx_DFP.2.1.0</PackID>
+          <PackID>Keil.STM32F3xx_DFP.2.2.0</PackID>
           <PackURL>http://www.keil.com/pack/</PackURL>
           <Cpu>IRAM(0x20000000-0x20002FFF) IRAM2(0x10000000-0x10000FFF) IROM(0x8000000-0x800FFFF)  CLOCK(8000000) FPU2 CPUTYPE("Cortex-M4") TZ</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F334x8,__FPU_PRESENT = 1U,ARM_MATH_CM4,__TARGET_FPU_VFP</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;         ../Drivers/STM32F3xx_HAL_Driver/Inc;         ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;         ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;         ../Drivers/CMSIS/Include;         ..\Drivers\OLED;         ..\Drivers\PID;         ..\Drivers\CMSIS\DSP\Include</IncludePath>
+              <IncludePath>../Core/Inc;                 ../Drivers/STM32F3xx_HAL_Driver/Inc;                 ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;                 ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;                 ../Drivers/CMSIS/Include;                 ..\Drivers\OLED;                 ..\Drivers\PID;                 ..\Drivers\CMSIS\DSP\Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -432,6 +432,16 @@
               <FileName>adc.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/adc.c</FilePath>
+            </File>
+            <File>
+              <FileName>comp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/comp.c</FilePath>
+            </File>
+            <File>
+              <FileName>dac.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/dac.c</FilePath>
             </File>
             <File>
               <FileName>dma.c</FileName>
@@ -547,6 +557,21 @@
               <FileName>stm32f3xx_hal_exti.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_exti.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f3xx_hal_comp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_comp.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f3xx_hal_dac.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_dac.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f3xx_hal_dac_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_dac_ex.c</FilePath>
             </File>
             <File>
               <FileName>stm32f3xx_hal_hrtim.c</FileName>
