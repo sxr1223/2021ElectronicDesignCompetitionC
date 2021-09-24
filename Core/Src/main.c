@@ -108,20 +108,20 @@ const fp32 vol_d_p_i_d[3]=  {0,0.00005,0};
 const fp32 vol_q_p_i_d[3]=  {0,0.00005,0};
 const fp32 vol_DC_p_i_d[3]= {0,0.0001,0};
 
-const fp32 curr_d_max_out=10;
-const fp32 curr_q_max_out=10;
-const fp32 curr_d_imax_out=10;
-const fp32 curr_q_imax_out=10;
+const fp32 curr_d_max_out=20;
+const fp32 curr_q_max_out=20;
+const fp32 curr_d_imax_out=18;
+const fp32 curr_q_imax_out=18;
 
-const fp32 vol_d_max_out=10;
-const fp32 vol_q_max_out=10;
-const fp32 vol_d_imax_out=10;
-const fp32 vol_q_imax_out=10;
+const fp32 vol_d_max_out=5000;
+const fp32 vol_q_max_out=5000;
+const fp32 vol_d_imax_out=4000;
+const fp32 vol_q_imax_out=4000;
 
 const fp32 vol_DC_max_out=10;
 const fp32 vol_DC_imax_out=10;
 
-float dq_vol_set[2]= {3,0};
+float dq_vol_set[2]= {500,0};
 float dq_vol_set_open_loop[2]= {0,7};
 
 //qd filter
@@ -256,11 +256,79 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim==&htim17)
 	{
-		if(pwm_need_cal_flag==0)
-		{
 			set_PWM();
-			pwm_need_cal_flag=1;
-		}
+			
+			for(uint8_t i=0;i<3;i++)
+			{
+//				first_order_filter(&adc_fliter_first_order_LP[i],adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]));
+//				abc_vol_out_samp[i]=adc_fliter_first_order_LP[i].out;
+//				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]));
+//				abc_curr_out_samp[i]=adc_fliter_first_order_LP[i+3].out;
+				
+//				abc_vol_out_samp[i]=adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]);
+//				abc_curr_out_samp[i]=adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]);
+				abc_vol_out_samp[i]=(adc_data[i]-cail_res[i]);
+				abc_curr_out_samp[i]=(adc_data[i+3]-cail_res[i+3]);
+			}
+			
+			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+			
+			clarke_amp(abc_vol_out_samp,al_be_vol_out_samp);
+			clarke_amp(abc_curr_out_samp,al_be_curr_out_samp);
+
+			sin_temp=arm_sin_f32(theta);
+			cos_temp=arm_cos_f32(theta);
+			theta+=0.01745329252f;
+			step++;
+			if(step==360)
+			{
+				step=0;
+				theta=0.0f;
+			}
+
+			park(al_be_curr_out_samp,dq_curr_out_samp);
+			park(al_be_vol_out_samp,dq_vol_out_samp);
+			
+			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
+			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
+			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
+			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
+			
+//			if(fabs(dq_curr_out_samp[0]-last_dq_curr_out_samp[0])>150)
+//				dq_curr_out_samp[0]=last_dq_curr_out_samp[0];
+//			else
+//				last_dq_curr_out_samp[0]=dq_curr_out_samp[0];
+//			
+//			if(fabs(dq_curr_out_samp[1]-last_dq_curr_out_samp[1])>150)
+//				dq_curr_out_samp[1]=last_dq_curr_out_samp[1];
+//			else
+//				last_dq_curr_out_samp[1]=dq_curr_out_samp[1];
+			
+			PID_calc(&vol_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
+			PID_calc(&vol_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
+
+			PID_calc(&curr_d_pid,dq_curr_out_samp[0],vol_d_pid.out);
+			PID_calc(&curr_q_pid,dq_curr_out_samp[1],vol_q_pid.out);
+			
+//			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
+//			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
+
+			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
+			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
+			
+//			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
+//			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
+			
+			ipark(al_be_curr_pid_out,dq_curr_pid_out);
+
+			sector=(al_be_curr_pid_out[1]>0)|((SQRT_3*al_be_curr_pid_out[0]-al_be_curr_pid_out[1]>0)<<1)|((SQRT_3*al_be_curr_pid_out[0]+al_be_curr_pid_out[1]<0)<<2);
+
+			X=SQRT_3*al_be_curr_pid_out[1]*T/V_DC;
+			Y=(al_be_curr_pid_out[1]/SQRT_3+al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
+			Z=(al_be_curr_pid_out[1]/SQRT_3-al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
+
+			sector_fun[sector-1]();
+			
 		
 	}
 }
@@ -414,11 +482,11 @@ int main(void)
   MX_DAC1_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,9);
-	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,10,9);
-	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,8,7.5);
-	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,8,7.5);
-	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,11520,11520);
+	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,vol_d_max_out,vol_d_imax_out);
+	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,vol_q_max_out,vol_q_imax_out);
+	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,curr_q_max_out,curr_q_imax_out);
+	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,curr_d_max_out,curr_d_imax_out);
+	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,vol_DC_max_out,vol_DC_imax_out);
 
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
 
@@ -440,7 +508,7 @@ int main(void)
 //	OLED_Display_On();
 //	OLED_printf(0,0,16,"Hello World.");
 
-	HAL_TIM_Base_Start_IT(&htim17);
+	
 
 	sector_fun[0]=sector_1;
 	sector_fun[1]=sector_2;
@@ -452,9 +520,8 @@ int main(void)
 	pwm[3][1]=32000/2;
 	set_PWM();
 	
-	pwm_need_cal_flag=0;
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-	
+	HAL_TIM_Base_Start_IT(&htim17);
 	
 	for(cail_time=0;cail_time<100;)
 	{
@@ -476,83 +543,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		if(pwm_need_cal_flag==1)
-		{
-			for(uint8_t i=0;i<3;i++)
-			{
-//				first_order_filter(&adc_fliter_first_order_LP[i],adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]));
-//				abc_vol_out_samp[i]=adc_fliter_first_order_LP[i].out;
-//				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]));
-//				abc_curr_out_samp[i]=adc_fliter_first_order_LP[i+3].out;
-				
-//				abc_vol_out_samp[i]=adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]);
-//				abc_curr_out_samp[i]=adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]);
-				abc_vol_out_samp[i]=(adc_data[i]-cail_res[i]);
-				abc_curr_out_samp[i]=(adc_data[i+3]-cail_res[i+3]);
-			}
-			
-			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-			
-			clarke_amp(abc_vol_out_samp,al_be_vol_out_samp);
-			clarke_amp(abc_curr_out_samp,al_be_curr_out_samp);
-
-			sin_temp=arm_sin_f32(theta);
-			cos_temp=arm_cos_f32(theta);
-			theta+=0.01745329252f;
-			step++;
-			if(step==360)
-			{
-				step=0;
-				theta=0.0f;
-			}
-
-			park(al_be_curr_out_samp,dq_curr_out_samp);
-			park(al_be_vol_out_samp,dq_vol_out_samp);
-			
-			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
-			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
-			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
-			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
-			
-//			if(fabs(dq_curr_out_samp[0]-last_dq_curr_out_samp[0])>150)
-//				dq_curr_out_samp[0]=last_dq_curr_out_samp[0];
-//			else
-//				last_dq_curr_out_samp[0]=dq_curr_out_samp[0];
-//			
-//			if(fabs(dq_curr_out_samp[1]-last_dq_curr_out_samp[1])>150)
-//				dq_curr_out_samp[1]=last_dq_curr_out_samp[1];
-//			else
-//				last_dq_curr_out_samp[1]=dq_curr_out_samp[1];
-			
-			PID_calc(&vol_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
-			PID_calc(&vol_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
-
-			PID_calc(&curr_d_pid,dq_curr_out_samp[0],vol_d_pid.out);
-			PID_calc(&curr_q_pid,dq_curr_out_samp[1],vol_q_pid.out);
-			
-//			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
-//			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
-
-			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
-			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
-			
-//			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
-//			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
-			
-			ipark(al_be_curr_pid_out,dq_curr_pid_out);
-
-			sector=(al_be_curr_pid_out[1]>0)|((SQRT_3*al_be_curr_pid_out[0]-al_be_curr_pid_out[1]>0)<<1)|((SQRT_3*al_be_curr_pid_out[0]+al_be_curr_pid_out[1]<0)<<2);
-
-			X=SQRT_3*al_be_curr_pid_out[1]*T/V_DC;
-			Y=(al_be_curr_pid_out[1]/SQRT_3+al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
-			Z=(al_be_curr_pid_out[1]/SQRT_3-al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
-
-			sector_fun[sector-1]();
-
-			pwm_need_cal_flag=0;
-			
-			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
-		}
 
     /* USER CODE END WHILE */
 

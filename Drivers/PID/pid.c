@@ -78,11 +78,11 @@ void pid_test_init(){
     {                          \
         if (input > max)       \
         {                      \
-            input = max;       \
+            input = 0;       \
         }                      \
         else if (input < -max) \
         {                      \
-            input = -max;      \
+            input = 0;      \
         }                      \
     }
 
