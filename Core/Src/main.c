@@ -547,8 +547,8 @@ int main(void)
 //			PID_calc(&vol_d_pid,vol_d_samp_ave_filter.out,dq_vol_set[0]);
 //			PID_calc(&vol_q_pid,vol_q_samp_ave_filter.out,dq_vol_set[1]);
 
-			PID_calc(&curr_d_pid,curr_d_samp_ave_filter.out,curr_set);
-			PID_calc(&curr_q_pid,curr_q_samp_ave_filter.out,0);
+			PID_calc(&curr_d_pid,dq_curr_out_samp[0],curr_set);
+			PID_calc(&curr_q_pid,dq_curr_out_samp[1],0);
 			
 //			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
 //			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
