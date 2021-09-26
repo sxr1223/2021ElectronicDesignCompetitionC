@@ -136,7 +136,7 @@ const fp32 vol_DC_max_out=10;
 const fp32 vol_DC_imax_out=10;
 
 float dq_vol_set[2]= {500,0};
-float dq_vol_set_open_loop[2]= {0,7};
+float dq_vol_set_open_loop[2]= {7,0};
 
 float curr_set=200;
 //pwm
@@ -556,8 +556,8 @@ int main(void)
 			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
 			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
 			
-//			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
-//			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
+			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
+			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
 			
 			ipark(al_be_curr_pid_out,dq_curr_pid_out);
 
