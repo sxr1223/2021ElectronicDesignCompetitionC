@@ -116,8 +116,8 @@ pid_type_def curr_d_pid;
 pid_type_def vol_d_pid;
 pid_type_def vol_DC_pid;
 
-const fp32 curr_q_p_i_d[3]= {0.0001,0.00005,0};
-const fp32 curr_d_p_i_d[3]= {0.0001,0.00005,0};
+const fp32 curr_q_p_i_d[3]= {0.0000,0.00005,0};
+const fp32 curr_d_p_i_d[3]= {0.0000,0.00005,0};
 const fp32 vol_d_p_i_d[3]=  {0,0.00005,0};
 const fp32 vol_q_p_i_d[3]=  {0,0.00005,0};
 const fp32 vol_DC_p_i_d[3]= {0,0.0001,0};
