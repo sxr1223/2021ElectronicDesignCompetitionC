@@ -158,22 +158,12 @@
         <Ww>
           <count>0</count>
           <WinNumber>1</WinNumber>
-          <ItemText>curr_d_pid</ItemText>
+          <ItemText>cail_res,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>curr_q_pid</ItemText>
-        </Ww>
-        <Ww>
-          <count>2</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>dq_curr_out_samp</ItemText>
-        </Ww>
-        <Ww>
-          <count>3</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>curr_set</ItemText>
+          <ItemText>adc_data,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <ScvdList>

@@ -140,7 +140,7 @@ float dq_vol_set_open_loop[2]= {7,0};
 
 float curr_set=200;
 //pwm
-uint16_t pwm[4][2]= {0};
+uint16_t pwm[4][2]= {{0,0},{0,0},{0,0},{0,0}};
 uint16_t pwm_temp[4];
 
 //vol_in_theta
@@ -181,7 +181,7 @@ uint8_t pwm_need_cal_flag=1;
 
 //cail
 uint8_t cail_time;
-uint16_t cail_res[DATA_CH_NUM]= {0,0,0,0,0,0};
+float cail_res[DATA_CH_NUM]= {0,0,0,0,0,0};
 
 /* USER CODE END PV */
 
@@ -468,24 +468,24 @@ int main(void)
 	
 	pwm[3][1]=32000/2;
 	set_PWM();
-	
+
 	pwm_need_cal_flag=0;
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	
 	
-	for(cail_time=0;cail_time<100;)
+	for(cail_time=0;cail_time<20;)
 	{
 		if(pwm_need_cal_flag==1)
 		{
 			for(uint8_t i=0;i<DATA_CH_NUM;i++)
-				cail_res[i]+=adc_data[i];
+				cail_res[i]=cail_res[i]+adc_data[i];
 			cail_time++;
 			pwm_need_cal_flag=0;
 		}
 	}
 	
 	for(uint8_t i=0;i<DATA_CH_NUM;i++)
-		cail_res[i]=cail_res[i]/100.0f;
+		cail_res[i]=cail_res[i]/20.0f;
 	
   /* USER CODE END 2 */
 
@@ -497,15 +497,8 @@ int main(void)
 		{
 			for(uint8_t i=0;i<3;i++)
 			{
-//				first_order_filter(&adc_fliter_first_order_LP[i],adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]));
-//				abc_vol_out_samp[i]=adc_fliter_first_order_LP[i].out;
-//				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]));
-//				abc_curr_out_samp[i]=adc_fliter_first_order_LP[i+3].out;
-				
-//				abc_vol_out_samp[i]=adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]);
-//				abc_curr_out_samp[i]=adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]);
-				abc_vol_out_samp[i]=(adc_data[i]-cail_res[i]);
-				abc_curr_out_samp[i]=(adc_data[i+3]-cail_res[i+3]);
+				abc_vol_out_samp[i]=-(adc_data[i]-cail_res[i]);
+				abc_curr_out_samp[i]=-(adc_data[i+3]-cail_res[i+3]);
 			}
 			
 			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
@@ -515,11 +508,11 @@ int main(void)
 
 //			sin_temp=arm_sin_f32(theta);
 //			cos_temp=arm_cos_f32(theta);
-			sin_cos_temp=abc_vol_out_samp[0]*abc_vol_out_samp[0]+abc_vol_out_samp[1]*abc_vol_out_samp[1];
+			sin_cos_temp=al_be_vol_out_samp[0]*al_be_vol_out_samp[0]+al_be_vol_out_samp[1]*al_be_vol_out_samp[1];
 			arm_sqrt_f32(sin_cos_temp,&sin_cos_temp);
 
-			sin_temp=abc_vol_out_samp[1]/sin_cos_temp;
-			cos_temp=abc_vol_out_samp[0]/sin_cos_temp;
+			sin_temp=al_be_vol_out_samp[1]/sin_cos_temp;
+			cos_temp=al_be_vol_out_samp[0]/sin_cos_temp;
 			
 			park(al_be_curr_out_samp,dq_curr_out_samp);
 //			park(al_be_vol_out_samp,dq_vol_out_samp);
@@ -547,14 +540,14 @@ int main(void)
 //			PID_calc(&vol_d_pid,vol_d_samp_ave_filter.out,dq_vol_set[0]);
 //			PID_calc(&vol_q_pid,vol_q_samp_ave_filter.out,dq_vol_set[1]);
 
-			PID_calc(&curr_d_pid,dq_curr_out_samp[0],curr_set);
-			PID_calc(&curr_q_pid,dq_curr_out_samp[1],0);
-			
+//			PID_calc(&curr_d_pid,dq_curr_out_samp[0],curr_set);
+//			PID_calc(&curr_q_pid,dq_curr_out_samp[1],0);
+//			
 //			PID_calc(&curr_d_pid,dq_curr_out_samp[0],dq_vol_set[0]);
 //			PID_calc(&curr_q_pid,dq_curr_out_samp[1],dq_vol_set[1]);
 
-			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
-			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
+//			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
+//			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
 			
 			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
 			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
