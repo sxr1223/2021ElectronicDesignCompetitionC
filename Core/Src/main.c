@@ -53,6 +53,7 @@
 #define DATA_CH_NUM 6
 #define MAX_PWM_F 23040.0f
 #define MAX_PWM_I 23040
+#define CYCLE 360
 
 #define SQRT_3_DIV_2 	0.86602540378f
 #define SQRT_6_DIV_3 	0.81649658093f
@@ -73,6 +74,14 @@ typedef struct
     fp32 out;          //滤波输出的数据
     fp32 num[2];
 } first_order_filter_type_t;
+
+typedef struct
+{
+	uint16_t data[CYCLE];
+	uint16_t index;
+	uint32_t sum;
+	float out;
+} average_update_t;
 
 #define AVERAGE_FILITER_NUM 10
 typedef struct
@@ -405,6 +414,11 @@ void sector_6(void)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	average_update_t input_phase_abc[3]={
+	{{0},0,0,0},
+	{{0},0,0,0},
+	{{0},0,0,0}
+};
 
   /* USER CODE END 1 */
 
@@ -504,8 +518,22 @@ int main(void)
 		{
 			for(uint8_t i=0;i<3;i++)
 			{
-				abc_vol_out_samp[i]= -(adc_data[i]  -cail_res[i]  )/2048.0/SQRT_3;
-				abc_curr_out_samp[i]=-(adc_data[i+3]-cail_res[i+3])/2048.0f/SQRT_3;
+//				abc_vol_out_samp[i]= -(adc_data[i]  -cail_res[i]  )/2048.0/SQRT_3;
+//				abc_curr_out_samp[i]=-(adc_data[i+3]-cail_res[i+3])/2048.0f/SQRT_3;
+				
+				abc_vol_out_samp[i]= (cail_res[i]  -adc_data[i]  )/2048.0/SQRT_3;
+				abc_curr_out_samp[i]=(cail_res[i+3]-adc_data[i+3])/2048.0f/SQRT_3;
+				
+				input_phase_abc[i].data[input_phase_abc[i].index]=(adc_data[i]  -cail_res[i]);
+				input_phase_abc[i].sum+=input_phase_abc[i].data[input_phase_abc[i].index];
+				input_phase_abc[i].index++;
+				
+				if(input_phase_abc[i].index==CYCLE)
+				{
+					input_phase_abc[i].index=0;
+					input_phase_abc[i].out=input_phase_abc[i].sum/(float)CYCLE;
+					cail_res[i]=input_phase_abc[i].out;
+				}
 			}
 			
 			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
@@ -513,8 +541,6 @@ int main(void)
 			clarke_amp(abc_vol_out_samp,al_be_vol_out_samp);
 			clarke_amp(abc_curr_out_samp,al_be_curr_out_samp);
 
-			sin_temp=arm_sin_f32(theta);
-			cos_temp=arm_cos_f32(theta);
 			sin_cos_temp=al_be_vol_out_samp[0]*al_be_vol_out_samp[0]+al_be_vol_out_samp[1]*al_be_vol_out_samp[1];
 			arm_sqrt_f32(sin_cos_temp,&sin_cos_temp);
 
