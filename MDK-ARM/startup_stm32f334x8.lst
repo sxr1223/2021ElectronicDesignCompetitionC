@@ -557,13 +557,13 @@ ARM Macro Assembler    Page 9
               00000400 
               00000200 
               00000000 
-Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --depend=f
-334\startup_stm32f334x8.d -of334\startup_stm32f334x8.o -I.\RTE\_F334 -IC:\Users
-\sxr\AppData\Local\Arm\Packs\ARM\CMSIS\5.8.0\CMSIS\Core\Include -IC:\Users\sxr\
-AppData\Local\Arm\Packs\Keil\STM32F3xx_DFP\2.1.0\Drivers\CMSIS\Device\ST\STM32F
-3xx\Include --predefine="__UVISION_VERSION SETA 528" --predefine="_RTE_ SETA 1"
- --predefine="STM32F334x8 SETA 1" --list=startup_stm32f334x8.lst startup_stm32f
-334x8.s
+Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp.sp --depen
+d=f334\startup_stm32f334x8.d -of334\startup_stm32f334x8.o -I.\RTE\_F334 -ID:\Pr
+ogram_File\Keil\Package\ARM\CMSIS\5.8.0\CMSIS\Core\Include -ID:\Program_File\Ke
+il\Package\Keil\STM32F3xx_DFP\2.2.1\Drivers\CMSIS\Device\ST\STM32F3xx\Include -
+-predefine="__UVISION_VERSION SETA 536" --predefine="_RTE_ SETA 1" --predefine=
+"STM32F334x8 SETA 1" --predefine="_RTE_ SETA 1" --list=startup_stm32f334x8.lst 
+startup_stm32f334x8.s
 
 
 
