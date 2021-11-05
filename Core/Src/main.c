@@ -71,7 +71,7 @@ const fp32 vol_p_i_d[3]= {0,1,0};
 
 uint16_t scop[DATA_LEN];
 
-float vol_set=15;
+float vol_set=30;
 float vol_out=0;
 
 #define BUCK_MODE 0
