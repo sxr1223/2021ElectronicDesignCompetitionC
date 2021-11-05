@@ -62,7 +62,7 @@ float actuall_value[DATA_CH_NUM]={0};
 float kb_convert[DATA_CH_NUM][2]=
 {
 	{0.0140373018,0.9048532910},
-	{},
+	{0},
 	{0.0122173811,0.0485830958}
 };
 
@@ -73,14 +73,6 @@ uint16_t scop[DATA_LEN];
 
 float vol_set=30;
 float vol_out=0;
-
-#define BUCK_MODE 0
-#define BOOST_MODE 1
-#define BOUNDARY_MODE 2
-
-uint8_t FSBB_mode=BOUNDARY_MODE;
-
-#define MIN_PWM_FSBB 10
 
 /* USER CODE END PV */
 
@@ -100,35 +92,7 @@ void HAL_HRTIM_RegistersUpdateCallback(HRTIM_HandleTypeDef * hhrtim,uint32_t Tim
 {
 	if(TimerIdx==HRTIM_TIMERINDEX_MASTER)
 	{		
-		if(FSBB_mode==BUCK_MODE)
-		{
-			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400-MIN_PWM_FSBB;
-			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = vol_pid.out;
-			
-			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 100;
-			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;
-			
-			return;
-		}
-		
-		if(FSBB_mode==BOOST_MODE)
-		{
-			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 14400-MIN_PWM_FSBB;
-			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400-vol_pid.out;
-			
-			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 100;
-			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;			
-			return;
-		}
-		
-		if(FSBB_mode==BOUNDARY_MODE)
-		{
-			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;
-			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = vol_pid.out;
-			
-			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = vol_pid.out + 100;
-			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14300;
-		}
+
 	}
 }
 
@@ -165,29 +129,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		}
 		
 		PID_calc(&vol_pid,actuall_value[2],vol_set);
-		if(vol_pid.out<0)
-			vol_pid.out=0;
-		
-		if(FSBB_mode!=BOUNDARY_MODE && actuall_value[0]<vol_set+3 && actuall_value[0]>vol_set-3)
-		{
-			FSBB_mode=BOUNDARY_MODE;
-			PID_clear(&vol_pid);
-			vol_pid.out=14400/2;
-		}
-		
-		if(FSBB_mode==BOUNDARY_MODE && actuall_value[0]<vol_set-5)
-		{
-			FSBB_mode=BOOST_MODE;
-			PID_clear(&vol_pid);
-			vol_pid.out=100;
-		}
-		
-		if(FSBB_mode==BOUNDARY_MODE && actuall_value[0]>vol_set+5)
-		{
-			FSBB_mode=BUCK_MODE;
-			PID_clear(&vol_pid);
-			vol_pid.out=14300;
-		}
+
+		hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 100;
+		hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400- vol_pid.out;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
