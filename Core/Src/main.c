@@ -48,7 +48,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define SPWM_NUM 400
-#define DATA_LEN 20
+#define DATA_LEN 10
 #define DATA_CH_NUM 6
 /* USER CODE END PM */
 
@@ -58,20 +58,27 @@
 
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data_fin[DATA_CH_NUM]= {0};
+float actuall_value[DATA_CH_NUM]={0};
+float kb_convert[DATA_CH_NUM][2]=
+{
+	{0.0140373018,0.9048532910},
+	{},
+	{0.0122173811,0.0485830958}
+};
 
 pid_type_def vol_pid;
-const fp32 vol_p_i_d[3]= {0,0.4,0};
+const fp32 vol_p_i_d[3]= {0,1,0};
 
 uint16_t scop[DATA_LEN];
 
-float vol_set=10;
+float vol_set=15;
 float vol_out=0;
 
 #define BUCK_MODE 0
 #define BOOST_MODE 1
 #define BOUNDARY_MODE 2
 
-uint8_t FSBB_mode=BUCK_MODE;
+uint8_t FSBB_mode=BOUNDARY_MODE;
 
 #define MIN_PWM_FSBB 10
 
@@ -92,27 +99,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void HAL_HRTIM_RegistersUpdateCallback(HRTIM_HandleTypeDef * hhrtim,uint32_t TimerIdx)
 {
 	if(TimerIdx==HRTIM_TIMERINDEX_MASTER)
-	{
-		PID_calc(&vol_pid,vol_out,vol_set);
-		
-		FSBB_mode=BUCK_MODE;
-		
+	{		
 		if(FSBB_mode==BUCK_MODE)
 		{
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400-MIN_PWM_FSBB;
-			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 14400/2;
+			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = vol_pid.out;
+			
+			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 100;
+			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;
+			
+			return;
 		}
 		
 		if(FSBB_mode==BOOST_MODE)
 		{
-			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400/2;
 			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 14400-MIN_PWM_FSBB;
+			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400-vol_pid.out;
+			
+			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 100;
+			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;			
+			return;
 		}
 		
 		if(FSBB_mode==BOUNDARY_MODE)
 		{
-			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14400/2;
-			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 14400/2-1000;
+			hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 100;
+			hhrtim1.Instance->sTimerxRegs[1].CMP1xR = vol_pid.out;
+			
+			hhrtim1.Instance->sTimerxRegs[0].CMP2xR = vol_pid.out + 100;
+			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 14300;
 		}
 	}
 }
@@ -137,21 +152,43 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 	if(hadc==&hadc1)
 	{
-//		for(i=0;i<DATA_CH_NUM;i++)
-//		{
-//			sum=0;
-//			for(j=0;j<DATA_LEN;j++)
-//				sum+=adc_data[j][i];
-//			adc_data_fin[i]=sum/DATA_LEN;
-//		}
-		for(i=0;i<DATA_LEN;i++)
-			scop[i]=adc_data[i][0];
-		bubble(scop,DATA_LEN);
-		for(i=2,sum=0;i<DATA_LEN-2;i++)
-			sum+=scop[i];		
-		adc_data_fin[0]=(float)sum/(float)(DATA_LEN-4);
+		for(uint8_t j=0;j<DATA_CH_NUM;j++)
+		{
+			for(i=0;i<DATA_LEN;i++)
+				scop[i]=adc_data[i][j];
+			bubble(scop,DATA_LEN);
+			for(i=2,sum=0;i<DATA_LEN-2;i++)
+				sum+=scop[i];		
+			adc_data_fin[j]=(float)sum/(float)(DATA_LEN-4);
+			
+			actuall_value[j]=kb_convert[j][0]*adc_data_fin[j]+kb_convert[j][1];
+		}
 		
-		vol_out=adc_data_fin[0]*0.0081f+0.5817f;
+		PID_calc(&vol_pid,actuall_value[2],vol_set);
+		if(vol_pid.out<0)
+			vol_pid.out=0;
+		
+		if(FSBB_mode!=BOUNDARY_MODE && actuall_value[0]<vol_set+3 && actuall_value[0]>vol_set-3)
+		{
+			FSBB_mode=BOUNDARY_MODE;
+			PID_clear(&vol_pid);
+			vol_pid.out=14400/2;
+		}
+		
+		if(FSBB_mode==BOUNDARY_MODE && actuall_value[0]<vol_set-5)
+		{
+			FSBB_mode=BOOST_MODE;
+			PID_clear(&vol_pid);
+			vol_pid.out=100;
+		}
+		
+		if(FSBB_mode==BOUNDARY_MODE && actuall_value[0]>vol_set+5)
+		{
+			FSBB_mode=BUCK_MODE;
+			PID_clear(&vol_pid);
+			vol_pid.out=14300;
+		}
+		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
@@ -198,7 +235,7 @@ int main(void)
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_pid,PID_DELTA,vol_p_i_d,23040*2/3,23040*2/3*0.6);
+	PID_init(&vol_pid,PID_DELTA,vol_p_i_d,14300,14200);
 
 	HAL_HRTIM_WaveformCountStart_IT(&hhrtim1, HRTIM_TIMERID_MASTER);
 

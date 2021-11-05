@@ -158,32 +158,37 @@
         <Ww>
           <count>0</count>
           <WinNumber>1</WinNumber>
-          <ItemText>boost_pid</ItemText>
+          <ItemText>vol_set</ItemText>
         </Ww>
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>vol_out</ItemText>
+          <ItemText>vol_set</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
           <WinNumber>1</WinNumber>
-          <ItemText>vol_set</ItemText>
+          <ItemText>adc_data_fin,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>adc_data_fin[0],0x0A</ItemText>
+          <ItemText>actuall_value</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>adc_data,0x0A</ItemText>
+          <ItemText>vol_pid</ItemText>
         </Ww>
         <Ww>
           <count>5</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scop,0x0A</ItemText>
+          <ItemText>FSBB_mode</ItemText>
+        </Ww>
+        <Ww>
+          <count>6</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>actuall_value[0]</ItemText>
         </Ww>
       </WatchWindow1>
       <ScvdList>
