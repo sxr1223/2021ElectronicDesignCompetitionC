@@ -36,4 +36,9 @@ DbgMCU_APB1_Fz = 0x00000000;
 // </h>
 DbgMCU_APB2_Fz = 0x00000000;
 
+// <h> Flash Download Options
+//   <o.0> Option Byte Loading       <i> Launch the Option Byte Loading after a Flash Download by setting the OBL_LAUNCH bit (causes a reset)
+// </h>
+DoOptionByteLoading = 0x00000000;
+
 // <<< end of configuration section >>>

@@ -54,7 +54,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
