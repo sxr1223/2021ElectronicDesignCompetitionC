@@ -55,8 +55,8 @@
 #define MAX_PWM_DUTY 14400
 #define MIN_PWM_DUTY 96
 
-#define MAX_CHARGE_VOL 25.0f
-#define MIN_CHARGE_VOL 17.0f
+#define MAX_CHARGE_VOL 17.8f
+#define MIN_CHARGE_VOL 16.5f
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -97,23 +97,37 @@ float kb_convert[DATA_CH_NUM][2]=
 uint16_t scop[DATA_LEN];
 
 float vol_set=30;
-float vol_charge=17.2;
+float vol_charge=16.9;
 float load_curr_ration_mian=0.5;
 float learning_rate_mode_I=0.01;
 float learning_rate_mode_II=0.0001;
-
+float mode_convert_vol=25;
+float stop_relay_vol=20;
+uint8_t relay_is_on=0;
+//mode_I
 pid_type_def battery_buck_vol_out_pid;
-pid_type_def battery_buck_pow_in_pid;
+pid_type_def main_boost_vol_out_pid;
+
+const fp32 battery_buck_pow_in_p_i_d[3]={0.0f,10.0f,0.0f};
+const fp32 main_boost_vol_out_p_i_d[3]={0.0f,10.0f,0.0f};
+
+//mode_II
 pid_type_def main_boost_curr_out_pid;
 pid_type_def battery_boost_curr_out_pid;
-pid_type_def MPPT_pid;
 pid_type_def vol_out;
 
-const fp32 battery_buck_pow_in_p_i_d[3]={0.0f,0.25f,0.0f};
-const fp32 boostout_voltage_p_i_d[3]={0.0f,0.35f,0.0f};
-const fp32 vol_out_p_i_d[3]= {0,0.0001,0};
 const fp32 main_boost_curr_out_p_i_d[3]= {0,120,0};
 const fp32 battery_boost_curr_out_p_i_d[3]= {0,120,0};
+const fp32 vol_out_p_i_d[3]= {0,0.0001,0};
+
+//unused
+pid_type_def battery_buck_pow_in_pid;
+pid_type_def MPPT_pid;
+
+
+const fp32 boostout_voltage_p_i_d[3]={0.0f,0.35f,0.0f};
+
+
 const fp32 MPPT_p_i_d[3]= {0,1,0};
 
 
@@ -133,10 +147,11 @@ float min_step=0.1;
 
 float slope;
 float step;
-float delt_charge_vol=0.0001;
+float delt_charge_vol=0.05;
 
 uint8_t MPPT_is_on=0;
-uint8_t direction=1;
+int8_t direction=1;
+uint16_t MPPT_fre=4000;
 
 /* USER CODE END PV */
 
@@ -302,6 +317,15 @@ void C_mode_change(C_mode_t mode)
 
 void MPPT(void)
 {
+	static uint16_t i_MPPT=0;
+	
+	i_MPPT++;
+	if(i_MPPT==MPPT_fre)
+	{
+		i_MPPT=0;
+		return;
+	}
+			
 	now_pow=actuall_value[0]*actuall_value[4];
 	now_vol_in=actuall_value[0];
 	
@@ -317,7 +341,7 @@ void MPPT(void)
 	if(MPPT_is_on!=1)
 		return;
 	
-	slope=delt_pow/delt_vol_in;
+	slope=delt_pow;
 	
 	if(C_mode==mode_I)
 	{
@@ -348,7 +372,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	uint16_t i,j;
 	uint32_t sum;
 	static uint8_t soft_start_flag=0;
-	static uint16_t i_MPPT=0;
+	
 	
 	if(hadc==&hadc1)
 	{
@@ -388,21 +412,49 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			actuall_value[j]=kb_convert[j][0]*adc_data_fin[j]+kb_convert[j][1];
 		}
 		
-		PID_calc(&vol_out,actuall_value[2],vol_set);
-		PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out.out*load_curr_ration_mian);
-		PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out.out*(1-load_curr_ration_mian));
+//		if(actuall_value[5]>MAX_CHARGE_VOL)
+//		{
+//			change_stopbuckboost();
+//			return;
+//		}
+//		
+//		if(actuall_value[5]<MAX_CHARGE_VOL)
+//		{
+//			change_startbuck();
+//		}
 		
-		hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_curr_out_pid.out;
-		hhrtim1.Instance->sTimerxRegs[3].CMP1xR = MAX_PWM_DUTY - battery_boost_curr_out_pid.out;
-		
-		PID_calc(&battery_buck_vol_out_pid,actuall_value[5],vol_charge);
-		if(i_MPPT==1000)
-		{
-			MPPT();
-			i_MPPT=0;
+		if(C_mode==mode_II)
+		{	
+			PID_calc(&vol_out,actuall_value[2],vol_set);
+			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out.out*load_curr_ration_mian);
+			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out.out*(1-load_curr_ration_mian));
 		}
-		i_MPPT++;
+		
+		if(C_mode==mode_I)
+		{
+			PID_calc(&battery_buck_vol_out_pid,actuall_value[5],vol_charge);
+			
+			relay_is_on=1;
+			if(fabs(actuall_value[5]-vol_charge)<1&&actuall_value[0]<stop_relay_vol)
+			{
+				PID_calc(&main_boost_vol_out_pid,actuall_value[2],vol_set);
+				if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_12)==GPIO_PIN_SET)
+				{
+					HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);
+					main_boost_vol_out_pid.out=7000;
+				}
+			}
+		}
+		
+		MPPT();
+		
+		if(C_mode==mode_II)
+			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_curr_out_pid.out;
+		if(C_mode==mode_I)
+			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_vol_out_pid.out;
+		
 		hhrtim1.Instance->sTimerxRegs[1].CMP1xR = battery_buck_vol_out_pid.out;
+		hhrtim1.Instance->sTimerxRegs[3].CMP1xR = MAX_PWM_DUTY - battery_boost_curr_out_pid.out;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
@@ -449,17 +501,21 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_out,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY);
+	PID_init(&vol_out,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
 	PID_init(&main_boost_curr_out_pid, PID_DELTA,main_boost_curr_out_p_i_d,10000,10000);
 	PID_init(&battery_boost_curr_out_pid, PID_DELTA,battery_boost_curr_out_p_i_d,5000,5000);
 	
-	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_pow_in_p_i_d,MAX_PWM_DUTY-100,5000);	
+	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_pow_in_p_i_d,MAX_PWM_DUTY-100,5000);
+	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
+	
 	PID_init(&battery_buck_pow_in_pid, PID_DELTA, battery_buck_pow_in_p_i_d,5000,5000); 
 	PID_init(&MPPT_pid, PID_DELTA, MPPT_p_i_d,0,5000);	
 	
+	main_boost_vol_out_pid.out=200;
 	
 	change_stopbuckboost();
 	now_mode=charge;
+	C_mode=mode_I;
 	
 	HAL_HRTIM_WaveformCountStart_IT(&hhrtim1, HRTIM_TIMERID_MASTER);
 
@@ -484,8 +540,9 @@ int main(void)
 	OLED_printf(0,0,16,"Hello World.");
 
 	C_mode_change(mode_I);
-	C_mode=mode_init;
+	C_mode=mode_I;
 	MPPT_is_on=0;
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
