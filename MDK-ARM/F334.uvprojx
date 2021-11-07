@@ -189,7 +189,7 @@
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>0</hadIROM2>
             <StupSel>8</StupSel>
-            <useUlib>1</useUlib>
+            <useUlib>0</useUlib>
             <EndSel>0</EndSel>
             <uLtcg>0</uLtcg>
             <nSecure>0</nSecure>
@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F334x8</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;   ../Drivers/STM32F3xx_HAL_Driver/Inc;   ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;   ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;   ../Drivers/CMSIS/Include;   ..\Drivers\PID;   ..\Drivers\OLED</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F3xx_HAL_Driver/Inc;../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F3xx/Include;../Drivers/CMSIS/Include;..\Drivers\PID</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -394,11 +394,6 @@
           <GroupName>Application/User/Core</GroupName>
           <Files>
             <File>
-              <FileName>oled.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Drivers\OLED\oled.c</FilePath>
-            </File>
-            <File>
               <FileName>pid.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Drivers\PID\pid.c</FilePath>
@@ -427,16 +422,6 @@
               <FileName>hrtim.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/hrtim.c</FilePath>
-            </File>
-            <File>
-              <FileName>i2c.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Core/Src/i2c.c</FilePath>
-            </File>
-            <File>
-              <FileName>usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Core/Src/usart.c</FilePath>
             </File>
             <File>
               <FileName>stm32f3xx_it.c</FileName>
@@ -542,16 +527,6 @@
               <FileName>stm32f3xx_hal_tim_ex.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_tim_ex.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f3xx_hal_uart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_uart.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f3xx_hal_uart_ex.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_uart_ex.c</FilePath>
             </File>
           </Files>
         </Group>

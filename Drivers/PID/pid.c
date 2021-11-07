@@ -162,14 +162,14 @@ fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
     }
     else if (pid->mode == PID_DELTA)    //增量式
     {
-        pid->Pout = pid->Kp * (pid->error[0] - pid->error[1]);
-        pid->Iout = pid->Ki * pid->error[0];
-        pid->Dbuf[2] = pid->Dbuf[1];
-        pid->Dbuf[1] = pid->Dbuf[0];
-        pid->Dbuf[0] = (pid->error[0] - 2.0f * pid->error[1] + pid->error[2]);
-        pid->Dout = pid->Kd * pid->Dbuf[0];
-        pid->out += pid->Pout + pid->Iout + pid->Dout;
-        LimitMax(pid->out, pid->max_out);
+//        pid->Pout = pid->Kp * (pid->error[0] - pid->error[1]);
+//        pid->Iout = pid->Ki * pid->error[0];
+//        pid->Dbuf[2] = pid->Dbuf[1];
+//        pid->Dbuf[1] = pid->Dbuf[0];
+//        pid->Dbuf[0] = (pid->error[0] - 2.0f * pid->error[1] + pid->error[2]);
+//        pid->Dout = pid->Kd * pid->Dbuf[0];
+//        pid->out += pid->Pout + pid->Iout + pid->Dout;
+//        LimitMax(pid->out, pid->max_out);
     }
     return pid->out;
 }

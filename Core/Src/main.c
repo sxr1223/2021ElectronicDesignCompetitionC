@@ -23,13 +23,10 @@
 #include "dma.h"
 #include "hrtim.h"
 #include "hrtim.h"
-#include "i2c.h"
-#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "oled.h"
 #include "pid.h"
 #include "math.h"
 #include "string.h"
@@ -62,13 +59,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-	
-typedef enum
-{
-	all_close=0,
-	charge=1,
-	discharge=2
-}bettary_mode_t;
 
 typedef enum
 {
@@ -77,8 +67,7 @@ typedef enum
 	mode_II=2
 }C_mode_t;
 
-bettary_mode_t now_mode=all_close,last_mode=all_close;
-C_mode_t C_mode=mode_init;
+C_mode_t now_C_mode=mode_init,last_C_mode=mode_init;
 
 uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data_fin[DATA_CH_NUM]= {0};
@@ -99,11 +88,11 @@ uint16_t scop[DATA_LEN];
 float vol_set=30;
 float vol_charge=16.9;
 float load_curr_ration_mian=0.5;
-float learning_rate_mode_I=0.01;
-float learning_rate_mode_II=0.0001;
 float mode_convert_vol=25;
 float stop_relay_vol=20;
-uint8_t relay_is_on=0;
+
+float learning_rate_mode_II=0.001;
+float learning_rate_mode_I=0.001;
 //mode_I
 pid_type_def battery_buck_vol_out_pid;
 pid_type_def main_boost_vol_out_pid;
@@ -120,15 +109,7 @@ const fp32 main_boost_curr_out_p_i_d[3]= {0,120,0};
 const fp32 battery_boost_curr_out_p_i_d[3]= {0,120,0};
 const fp32 vol_out_p_i_d[3]= {0,0.0001,0};
 
-//unused
-pid_type_def battery_buck_pow_in_pid;
-pid_type_def MPPT_pid;
 
-
-const fp32 boostout_voltage_p_i_d[3]={0.0f,0.35f,0.0f};
-
-
-const fp32 MPPT_p_i_d[3]= {0,1,0};
 
 
 float now_pow;
@@ -244,31 +225,6 @@ void change_startboost(void)
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
-void change_mode(C_mode_t mode_flag)
-{
-	if(mode_flag==mode_init)
-	{
-		change_stopbuckboost();
-		return;
-	}
-	
-	if(mode_flag==mode_I)//charging mode
-	{
-		change_stopbuckboost();
-		HAL_Delay(1);
-		change_startbuck();
-		return;
-	}
-	
-	if(mode_flag==mode_II) //discharging mode
-	{
-		change_stopbuckboost();
-		HAL_Delay(1);
-		change_startboost();
-		return;
-	}
-}
-
 void HAL_HRTIM_RegistersUpdateCallback(HRTIM_HandleTypeDef * hhrtim,uint32_t TimerIdx)
 {
 	if(TimerIdx==HRTIM_TIMERINDEX_MASTER)
@@ -291,29 +247,40 @@ void bubble(uint16_t *a,uint8_t num)
 }
 
 
-void C_mode_change(C_mode_t mode)
+
+void C_mode_machine(void)
 {
-	if(mode==mode_I)
+	if(last_C_mode!=now_C_mode)
 	{
-		load_curr_ration_mian=1.0;
-		change_mode(mode_I);
-	}
-	
-	if(mode==mode_II)
-	{
-		load_curr_ration_mian=0.1;
-		change_mode(mode_II);
-	}
-	
-	if(mode==mode_init)
-	{
-		change_mode(mode_init);
+		//mode_II->mode_I
+		if(last_C_mode==mode_II&&now_C_mode==mode_I)
+		{
+			load_curr_ration_mian=1.0;
+			
+			change_stopbuckboost();
+			HAL_Delay(1);
+			change_startbuck();
+			return;
+		}
+		
+		//mode_I->mode_II
+		if(last_C_mode==mode_I&&now_C_mode==mode_II)
+		{
+			load_curr_ration_mian=0.5;
+			
+			change_stopbuckboost();
+			HAL_Delay(1);
+			change_startboost();
+			return;
+		}
+		
+		if(now_C_mode==mode_init)
+		{
+			change_stopbuckboost();
+			return;
+		}
 	}
 }
-
-
-
-
 
 void MPPT(void)
 {
@@ -343,7 +310,7 @@ void MPPT(void)
 	
 	slope=delt_pow;
 	
-	if(C_mode==mode_I)
+	if(now_C_mode==mode_I)
 	{
 		step=(learning_rate_mode_I*slope);
 		
@@ -361,12 +328,12 @@ void MPPT(void)
 			vol_charge=MIN_CHARGE_VOL;
 	}
 	
-	if(C_mode==mode_II)
+	if(now_C_mode==mode_II)
 	{
 		load_curr_ration_mian+=(learning_rate_mode_II*slope);
 	}
 }
-
+uint8_t relay_is_on=0;
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	uint16_t i,j;
@@ -377,28 +344,18 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	if(hadc==&hadc1)
 	{
 		
-//		if(last_mode!=now_mode)
+//		if(soft_start_flag==1)
 //		{
-//			change_mode(now_mode);
-//			last_mode=now_mode;
+//			battery_buck_vol_out_pid.max_out+=2000;
+//			battery_buck_pow_in_pid.max_out+=2000;
 //			
-//			battery_buck_vol_out_pid.max_out=0;
-//			battery_buck_pow_in_pid.max_out=0;
-//			soft_start_flag=1;
+//			if(battery_buck_pow_in_pid.max_out>=MAX_PWM_DUTY)
+//			{
+//				soft_start_flag=0;
+//				battery_buck_vol_out_pid.max_out=MAX_PWM_DUTY;
+//				battery_buck_pow_in_pid.max_out=MAX_PWM_DUTY;
+//			}
 //		}
-		
-		if(soft_start_flag==1)
-		{
-			battery_buck_vol_out_pid.max_out+=2000;
-			battery_buck_pow_in_pid.max_out+=2000;
-			
-			if(battery_buck_pow_in_pid.max_out>=MAX_PWM_DUTY)
-			{
-				soft_start_flag=0;
-				battery_buck_vol_out_pid.max_out=MAX_PWM_DUTY;
-				battery_buck_pow_in_pid.max_out=MAX_PWM_DUTY;
-			}
-		}
 
 		for(uint8_t j=0;j<DATA_CH_NUM;j++)
 		{
@@ -423,34 +380,46 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 //			change_startbuck();
 //		}
 		
-		if(C_mode==mode_II)
+		if(actuall_value[0]>mode_convert_vol)
+			now_C_mode=mode_I;
+		
+		C_mode_machine();
+		
+		if(now_C_mode==mode_II)
 		{	
 			PID_calc(&vol_out,actuall_value[2],vol_set);
 			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out.out*load_curr_ration_mian);
 			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out.out*(1-load_curr_ration_mian));
 		}
 		
-		if(C_mode==mode_I)
+		if(now_C_mode==mode_I)
 		{
 			PID_calc(&battery_buck_vol_out_pid,actuall_value[5],vol_charge);
 			
-			relay_is_on=1;
-			if(fabs(actuall_value[5]-vol_charge)<1&&actuall_value[0]<stop_relay_vol)
+			if(actuall_value[0]>30)
+			{
+				relay_is_on=1;
+				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
+			}
+			
+			if(relay_is_on==1&&actuall_value[0]<stop_relay_vol)
+			{
+				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);
+				main_boost_vol_out_pid.out=7000;
+				relay_is_on=0;
+			}
+			
+			if(actuall_value[0]<30)
 			{
 				PID_calc(&main_boost_vol_out_pid,actuall_value[2],vol_set);
-				if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_12)==GPIO_PIN_SET)
-				{
-					HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);
-					main_boost_vol_out_pid.out=7000;
-				}
 			}
 		}
 		
 		MPPT();
 		
-		if(C_mode==mode_II)
+		if(now_C_mode==mode_II)
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_curr_out_pid.out;
-		if(C_mode==mode_I)
+		if(now_C_mode==mode_I)
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_vol_out_pid.out;
 		
 		hhrtim1.Instance->sTimerxRegs[1].CMP1xR = battery_buck_vol_out_pid.out;
@@ -497,8 +466,6 @@ int main(void)
   MX_DMA_Init();
   MX_HRTIM1_Init();
   MX_ADC1_Init();
-  MX_I2C1_Init();
-  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
 	PID_init(&vol_out,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
@@ -508,14 +475,9 @@ int main(void)
 	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_pow_in_p_i_d,MAX_PWM_DUTY-100,5000);
 	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
 	
-	PID_init(&battery_buck_pow_in_pid, PID_DELTA, battery_buck_pow_in_p_i_d,5000,5000); 
-	PID_init(&MPPT_pid, PID_DELTA, MPPT_p_i_d,0,5000);	
-	
 	main_boost_vol_out_pid.out=200;
 	
-	change_stopbuckboost();
-	now_mode=charge;
-	C_mode=mode_I;
+	
 	
 	HAL_HRTIM_WaveformCountStart_IT(&hhrtim1, HRTIM_TIMERID_MASTER);
 
@@ -535,14 +497,10 @@ int main(void)
 
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 
-	OLED_Init();
-	OLED_Display_On();
-	OLED_printf(0,0,16,"Hello World.");
-
-	C_mode_change(mode_I);
-	C_mode=mode_I;
+	now_C_mode=mode_I;
 	MPPT_is_on=0;
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
+
+	change_startbuck();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -569,11 +527,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
@@ -594,11 +551,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_HRTIM1|RCC_PERIPHCLK_USART1
-                              |RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_ADC12;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_HRTIM1|RCC_PERIPHCLK_ADC12;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
-  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.Hrtim1ClockSelection = RCC_HRTIM1CLK_PLLCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
