@@ -74,19 +74,19 @@ uint16_t adc_data_fin[DATA_CH_NUM]= {0};
 float actuall_value[DATA_CH_NUM]={0};
 float kb_convert[DATA_CH_NUM][2]=
 {
-	{0.0145227829,0.4202179300},
-	{0.0017434228,0.0584743501},
-	{0.0096766749,0.0182962381},
-	{0.0004243475,0.0185494462},
-	{0.0004543514,0.0010506284},
-	{0.0055638080,0.1856579911},
-	{0.000419999997,0} 
+	{0.0156354319,0.8760253401},//0.9999492730
+	{0.0018310598,0.0330754579},//0.9998300626
+	{0.0094204314,0.1838279771},//0.9999567220
+	{0.0004230486,0.0189600747},//0.9996990227
+	{0.0005140228,0.0371836402},//0.9999189104
+	{0.0056227647,0.2171621009},//0.9999612940
+	{0.0004376324,0.0208325824} //0.9980617362 
 };
 
 uint16_t scop[DATA_LEN];
 
 float vol_set=30;
-float vol_charge=16.9;
+float vol_charge=17;
 float load_curr_ration_mian=0.5;
 float mode_convert_vol=25;
 float stop_relay_vol=20;
@@ -97,7 +97,7 @@ float learning_rate_mode_I=0.001;
 pid_type_def battery_buck_vol_out_pid;
 pid_type_def main_boost_vol_out_pid;
 
-const fp32 battery_buck_pow_in_p_i_d[3]={0.0f,10.0f,0.0f};
+const fp32 battery_buck_pow_in_p_i_d[3]={0.0f,400.0f,0.0f};
 const fp32 main_boost_vol_out_p_i_d[3]={0.0f,10.0f,0.0f};
 
 //mode_II
@@ -253,30 +253,33 @@ void C_mode_machine(void)
 	if(last_C_mode!=now_C_mode)
 	{
 		//mode_II->mode_I
-		if(last_C_mode==mode_II&&now_C_mode==mode_I)
+		if(now_C_mode==mode_I)
 		{
 			load_curr_ration_mian=1.0;
 			
 			change_stopbuckboost();
 			HAL_Delay(1);
 			change_startbuck();
+			last_C_mode=now_C_mode;
 			return;
 		}
 		
 		//mode_I->mode_II
-		if(last_C_mode==mode_I&&now_C_mode==mode_II)
+		if(now_C_mode==mode_II)
 		{
 			load_curr_ration_mian=0.5;
 			
 			change_stopbuckboost();
 			HAL_Delay(1);
 			change_startboost();
+			last_C_mode=now_C_mode;
 			return;
 		}
 		
 		if(now_C_mode==mode_init)
 		{
 			change_stopbuckboost();
+			last_C_mode=now_C_mode;
 			return;
 		}
 	}
@@ -368,7 +371,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			
 			actuall_value[j]=kb_convert[j][0]*adc_data_fin[j]+kb_convert[j][1];
 		}
-		
+		actuall_value[0]+=0.2f;
 //		if(actuall_value[5]>MAX_CHARGE_VOL)
 //		{
 //			change_stopbuckboost();
