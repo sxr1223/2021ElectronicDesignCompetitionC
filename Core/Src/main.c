@@ -85,33 +85,38 @@ float kb_convert[DATA_CH_NUM][2]=
 
 uint16_t scop[DATA_LEN];
 
+uint16_t adc2_data[DATA_LEN][4]= {0};
+float buck_curr_out;
+
 float vol_set=30;
-float vol_charge=17;
+float vol_charge=17.5;
 float load_curr_ration_mian=0.5;
 float mode_convert_vol=25;
 float stop_relay_vol=20;
 
 float learning_rate_mode_II=0.001;
 float learning_rate_mode_I=0.001;
+
 //mode_I
 pid_type_def battery_buck_vol_out_pid;
+pid_type_def battery_buck_curr_out_pid;
 pid_type_def main_boost_vol_out_pid;
 
-const fp32 battery_buck_pow_in_p_i_d[3]={0.0f,400.0f,0.0f};
-const fp32 main_boost_vol_out_p_i_d[3]={0.0f,10.0f,0.0f};
+const fp32 battery_buck_vol_in_p_i_d[3]={0.0f,-0.09f,0.0f};
+const fp32 battery_buck_curr_in_p_i_d[3]={0.0f,120.0f,0.0f};
+const fp32 main_boost_vol_out_p_i_d[3]={0.0f,1.0f,0.0f};
 
 //mode_II
 pid_type_def main_boost_curr_out_pid;
 pid_type_def battery_boost_curr_out_pid;
-pid_type_def vol_out;
+pid_type_def vol_out_pid;
 
 const fp32 main_boost_curr_out_p_i_d[3]= {0,120,0};
 const fp32 battery_boost_curr_out_p_i_d[3]= {0,120,0};
 const fp32 vol_out_p_i_d[3]= {0,0.0001,0};
 
 
-
-
+//MPPT
 float now_pow;
 float now_vol_in;
 
@@ -134,6 +139,15 @@ uint8_t MPPT_is_on=0;
 int8_t direction=1;
 uint16_t MPPT_fre=4000;
 
+float vin_target;
+float res_inside=10;
+int8_t key_no=-1;
+uint8_t mode_I_soft_start_flag=0;
+uint8_t mode_II_soft_start_flag=0;
+
+uint16_t charge_over_vol_counter;
+uint16_t charge_con_counter=0;
+uint16_t charge_con_fre=500;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -252,10 +266,15 @@ void C_mode_machine(void)
 {
 	if(last_C_mode!=now_C_mode)
 	{
-		//mode_II->mode_I
+		//mode_I
 		if(now_C_mode==mode_I)
 		{
 			load_curr_ration_mian=1.0;
+			mode_I_soft_start_flag=1;
+			PID_clear(&main_boost_vol_out_pid);
+			PID_clear(&battery_buck_vol_out_pid);
+			battery_buck_vol_out_pid.out=4000;
+			main_boost_vol_out_pid.max_out=0;
 			
 			change_stopbuckboost();
 			HAL_Delay(1);
@@ -264,10 +283,17 @@ void C_mode_machine(void)
 			return;
 		}
 		
-		//mode_I->mode_II
+		//mode_II
 		if(now_C_mode==mode_II)
 		{
 			load_curr_ration_mian=0.5;
+			mode_I_soft_start_flag=1;
+			PID_clear(&main_boost_curr_out_pid);
+			PID_clear(&battery_boost_curr_out_pid);
+			PID_clear(&vol_out_pid);
+			main_boost_curr_out_pid.max_out=0;
+			battery_boost_curr_out_pid.max_out=0;
+			vol_out_pid.max_out=0;
 			
 			change_stopbuckboost();
 			HAL_Delay(1);
@@ -305,30 +331,41 @@ void MPPT(void)
 	last_pow=now_pow;
 	last_vol_in=now_vol_in;
 	
+	slope=delt_pow;
+	step=(learning_rate_mode_I*slope);
+	
+	if(step<0)
+	{
+		direction=-direction;
+	}
+	
 	if(fabs(delt_vol_in)<min_delt_vol_in||fabs(delt_pow)<min_delt_pow)
 		return;
 	
 	if(MPPT_is_on!=1)
 		return;
 	
-	slope=delt_pow;
+	
 	
 	if(now_C_mode==mode_I)
-	{
-		step=(learning_rate_mode_I*slope);
-		
-		if(step<0)
-		{
-			direction=-direction;
-		}
-		
+	{	
 		if(fabs(step)>=min_step)
-			vol_charge+=delt_charge_vol*direction;
+		{
+			if(fabs(battery_buck_vol_out_pid.out)<0.9f*battery_buck_vol_out_pid.max_out)
+				vol_charge+=delt_charge_vol*direction;
+			else
+				battery_buck_vol_out_pid.max_out+=delt_charge_vol*direction*100;
+		}
 		
 		if(vol_charge>MAX_CHARGE_VOL)
 			vol_charge=MAX_CHARGE_VOL;
 		if(vol_charge<MIN_CHARGE_VOL)
 			vol_charge=MIN_CHARGE_VOL;
+		
+		if(battery_buck_vol_out_pid.max_out<0)
+			battery_buck_vol_out_pid.max_out=0.1;
+		if(battery_buck_vol_out_pid.max_out>19)
+			battery_buck_vol_out_pid.max_out=19;
 	}
 	
 	if(now_C_mode==mode_II)
@@ -341,25 +378,46 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	uint16_t i,j;
 	uint32_t sum;
-	static uint8_t soft_start_flag=0;
+	
 	
 	
 	if(hadc==&hadc1)
 	{
 		
-//		if(soft_start_flag==1)
-//		{
-//			battery_buck_vol_out_pid.max_out+=2000;
-//			battery_buck_pow_in_pid.max_out+=2000;
-//			
-//			if(battery_buck_pow_in_pid.max_out>=MAX_PWM_DUTY)
-//			{
-//				soft_start_flag=0;
-//				battery_buck_vol_out_pid.max_out=MAX_PWM_DUTY;
-//				battery_buck_pow_in_pid.max_out=MAX_PWM_DUTY;
-//			}
-//		}
+		if(mode_I_soft_start_flag==1)
+		{
+			main_boost_vol_out_pid.max_out+=100;
+			//battery_buck_vol_out_pid.max_out+=100;
+			
+			if(main_boost_vol_out_pid.max_out>main_boost_vol_out_pid.max_iout)
+				main_boost_vol_out_pid.max_out=main_boost_vol_out_pid.max_out;
+//			if(battery_buck_vol_out_pid.max_out>battery_buck_vol_out_pid.max_iout)
+//				battery_buck_vol_out_pid.max_out=battery_buck_vol_out_pid.max_out;
+			
+			if(battery_buck_vol_out_pid.max_out>=battery_buck_vol_out_pid.max_iout&&
+					main_boost_vol_out_pid.max_out>=main_boost_vol_out_pid.max_iout)
+				mode_I_soft_start_flag=0;
+		}
 
+		if(mode_II_soft_start_flag==1)
+		{
+			main_boost_curr_out_pid.max_out+=100;
+			battery_boost_curr_out_pid.max_out+=100;
+			vol_out_pid.max_out+=100;
+			
+			if(main_boost_curr_out_pid.max_out>main_boost_curr_out_pid.max_iout)
+				main_boost_curr_out_pid.max_out=main_boost_curr_out_pid.max_out;
+			if(battery_boost_curr_out_pid.max_out>battery_boost_curr_out_pid.max_iout)
+				battery_boost_curr_out_pid.max_out=battery_boost_curr_out_pid.max_out;
+			if(vol_out_pid.max_out>vol_out_pid.max_iout)
+				vol_out_pid.max_out=vol_out_pid.max_out;
+			
+			if(main_boost_curr_out_pid.max_out>=main_boost_curr_out_pid.max_iout&&
+					battery_boost_curr_out_pid.max_out>=battery_boost_curr_out_pid.max_iout&&
+					vol_out_pid.max_out>=vol_out_pid.max_iout)
+				mode_I_soft_start_flag=0;
+		}
+		
 		for(uint8_t j=0;j<DATA_CH_NUM;j++)
 		{
 			for(i=0;i<DATA_LEN;i++)
@@ -371,7 +429,18 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			
 			actuall_value[j]=kb_convert[j][0]*adc_data_fin[j]+kb_convert[j][1];
 		}
-		actuall_value[0]+=0.2f;
+		
+		for(i=0;i<DATA_LEN;i++)
+			scop[i]=adc2_data[i][0];
+		bubble(scop,DATA_LEN);
+		for(i=2,sum=0;i<DATA_LEN-2;i++)
+			sum+=scop[i];	
+		buck_curr_out=sum/(float)(DATA_LEN-2)*0.0012229299f-0.0174449447f;
+		
+		actuall_value[0]-=0.2f;
+		
+		vin_target=0.5f*(actuall_value[0]+res_inside*actuall_value[1]);
+		
 //		if(actuall_value[5]>MAX_CHARGE_VOL)
 //		{
 //			change_stopbuckboost();
@@ -385,34 +454,44 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		
 		if(actuall_value[0]>mode_convert_vol)
 			now_C_mode=mode_I;
+//		else
+//			now_C_mode=mode_II;
 		
 		C_mode_machine();
 		
 		if(now_C_mode==mode_II)
 		{	
-			PID_calc(&vol_out,actuall_value[2],vol_set);
-			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out.out*load_curr_ration_mian);
-			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out.out*(1-load_curr_ration_mian));
+			PID_calc(&vol_out_pid,actuall_value[2],vol_set);
+			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out_pid.out*load_curr_ration_mian);
+			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out_pid.out*(1-load_curr_ration_mian));
 		}
 		
 		if(now_C_mode==mode_I)
 		{
-			PID_calc(&battery_buck_vol_out_pid,actuall_value[5],vol_charge);
 			
-			if(actuall_value[0]>30)
+			charge_con_counter++;
+			if(charge_con_counter==charge_con_fre)
 			{
-				relay_is_on=1;
-				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
+				if(vin_target<28)
+				{
+					PID_calc(&battery_buck_vol_out_pid,actuall_value[0],vin_target);
+					charge_con_counter=0;
+					if(actuall_value[5]>MAX_CHARGE_VOL)
+					{
+						change_stopbuckboost();
+						while(1)
+						{
+							HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+							HAL_Delay(200);
+							HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
+						}
+					}
+				}
 			}
 			
-			if(relay_is_on==1&&actuall_value[0]<stop_relay_vol)
-			{
-				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);
-				main_boost_vol_out_pid.out=7000;
-				relay_is_on=0;
-			}
+			PID_calc(&battery_buck_curr_out_pid,buck_curr_out,battery_buck_vol_out_pid.out);
 			
-			if(actuall_value[0]<30)
+			if(actuall_value[0]<50&&battery_buck_vol_out_pid.error[0]<100.0f)
 			{
 				PID_calc(&main_boost_vol_out_pid,actuall_value[2],vol_set);
 			}
@@ -420,17 +499,32 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		
 		MPPT();
 		
+		if(main_boost_vol_out_pid.out<0)
+			main_boost_vol_out_pid.out=100;
+		
+		if(battery_buck_curr_out_pid.out<0)
+			battery_buck_curr_out_pid.out=100;
+		
+		if(battery_boost_curr_out_pid.out<0)
+			battery_boost_curr_out_pid.out=100;		
+		
+		if(main_boost_curr_out_pid.out<0)
+			main_boost_curr_out_pid.out=100;
+
+		
 		if(now_C_mode==mode_II)
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_curr_out_pid.out;
 		if(now_C_mode==mode_I)
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_vol_out_pid.out;
 		
-		hhrtim1.Instance->sTimerxRegs[1].CMP1xR = battery_buck_vol_out_pid.out;
+		hhrtim1.Instance->sTimerxRegs[1].CMP1xR = battery_buck_curr_out_pid.out;
 		hhrtim1.Instance->sTimerxRegs[3].CMP1xR = MAX_PWM_DUTY - battery_boost_curr_out_pid.out;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+		HAL_ADC_Start_DMA(&hadc2,(uint32_t*)adc2_data,DATA_LEN*4);
 	}
 }
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -469,14 +563,16 @@ int main(void)
   MX_DMA_Init();
   MX_HRTIM1_Init();
   MX_ADC1_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_out,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
-	PID_init(&main_boost_curr_out_pid, PID_DELTA,main_boost_curr_out_p_i_d,10000,10000);
+	PID_init(&vol_out_pid,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
+	PID_init(&main_boost_curr_out_pid, PID_DELTA,main_boost_curr_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	PID_init(&battery_boost_curr_out_pid, PID_DELTA,battery_boost_curr_out_p_i_d,5000,5000);
 	
-	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_pow_in_p_i_d,MAX_PWM_DUTY-100,5000);
-	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-100,MAX_PWM_DUTY-100);
+	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_vol_in_p_i_d,2.5,0.1);
+	PID_init(&battery_buck_curr_out_pid, PID_DELTA, battery_buck_curr_in_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
+	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	
 	main_boost_vol_out_pid.out=200;
 	
@@ -499,17 +595,124 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+	HAL_ADC_Start_DMA(&hadc2,(uint32_t*)adc2_data,DATA_LEN*4);
 
 	now_C_mode=mode_I;
 	MPPT_is_on=0;
 
 	change_startbuck();
+
+	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5,GPIO_PIN_RESET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_SET);
+		if(GPIOB->IDR&0x0040)
+		{
+			key_no=1;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0080)
+		{
+			key_no=2;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0100)
+		{
+			key_no=3;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0200)
+		{
+			key_no=4;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3,GPIO_PIN_SET);
+		if(GPIOB->IDR&0x0040)
+		{
+			key_no=1+4;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0080)
+		{
+			key_no=2+4;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0100)
+		{
+			key_no=3+4;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0200)
+		{
+			key_no=4+4;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3,GPIO_PIN_RESET);
+		
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4,GPIO_PIN_SET);
+		if(GPIOB->IDR&0x0040)
+		{
+			key_no=1+8;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0080)
+		{
+			key_no=2+8;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0100)
+		{
+			key_no=3+8;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0200)
+		{
+			key_no=4+8;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4,GPIO_PIN_RESET);
+		
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_SET);
+		if(GPIOB->IDR&0x0040)
+		{
+			key_no=1+12;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0080)
+		{
+			key_no=2+12;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0100)
+		{
+			key_no=3+12;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		if(GPIOB->IDR&0x0200)
+		{
+			key_no=4+12;
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+		}
+		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_RESET);
+		
+		if(key_no!=-1)
+		{
+			if(key_no==1)
+				vol_charge-=0.05;
+			if(key_no==2)
+				vol_charge+=0.05;
+			
+			key_no=-1;
+		}
+		
+		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
