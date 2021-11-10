@@ -469,32 +469,11 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		if(now_C_mode==mode_I)
 		{
 			
-			charge_con_counter++;
-			if(charge_con_counter==charge_con_fre)
-			{
-				if(vin_target<28)
-				{
-					PID_calc(&battery_buck_vol_out_pid,actuall_value[0],vin_target);
-					charge_con_counter=0;
-					if(actuall_value[5]>MAX_CHARGE_VOL)
-					{
-						change_stopbuckboost();
-						while(1)
-						{
-							HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
-							HAL_Delay(200);
-							HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
-						}
-					}
-				}
-			}
+			PID_calc(&battery_buck_vol_out_pid,actuall_value[5],vol_charge);
 			
 			PID_calc(&battery_buck_curr_out_pid,buck_curr_out,battery_buck_vol_out_pid.out);
 			
-			if(actuall_value[0]<50&&battery_buck_vol_out_pid.error[0]<100.0f)
-			{
-				PID_calc(&main_boost_vol_out_pid,actuall_value[2],vol_set);
-			}
+			PID_calc(&main_boost_vol_out_pid,actuall_value[2],vol_set);
 		}
 		
 		MPPT();
@@ -708,6 +687,11 @@ int main(void)
 				vol_charge-=0.05;
 			if(key_no==2)
 				vol_charge+=0.05;
+			
+			if(key_no==3)
+				vol_set+=0.05;
+			if(key_no==4)
+				vol_set-=0.05;
 			
 			key_no=-1;
 		}
