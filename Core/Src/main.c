@@ -91,7 +91,7 @@ float buck_curr_out;
 float vol_set=30;
 float vol_charge=17.5;
 float load_curr_ration_mian=0.5;
-float mode_convert_vol=25;
+float mode_convert_vol=50;
 float stop_relay_vol=20;
 
 float learning_rate_mode_II=0.001;
@@ -103,17 +103,19 @@ pid_type_def battery_buck_curr_out_pid;
 pid_type_def main_boost_vol_out_pid;
 
 const fp32 battery_buck_vol_in_p_i_d[3]={0.0f,-0.09f,0.0f};
-const fp32 battery_buck_curr_in_p_i_d[3]={0.0f,120.0f,0.0f};
+const fp32 battery_buck_curr_in_p_i_d[3]={0.0f,-1.0f,0.0f};
 const fp32 main_boost_vol_out_p_i_d[3]={0.0f,1.0f,0.0f};
 
 //mode_II
 pid_type_def main_boost_curr_out_pid;
 pid_type_def battery_boost_curr_out_pid;
 pid_type_def vol_out_pid;
+pid_type_def MPPT_mode_II_pid;
 
-const fp32 main_boost_curr_out_p_i_d[3]= {0,120,0};
-const fp32 battery_boost_curr_out_p_i_d[3]= {0,120,0};
-const fp32 vol_out_p_i_d[3]= {0,0.0001,0};
+const fp32 main_boost_curr_out_p_i_d[3]= {0,10,0};
+const fp32 battery_boost_curr_out_p_i_d[3]= {0,10,0};
+const fp32 vol_out_p_i_d[3]= {0,0.0005,0};
+const fp32 MPPT_mode_II_p_i_d[3]= {0,1.0,0};
 
 
 //MPPT
@@ -148,6 +150,9 @@ uint8_t mode_II_soft_start_flag=0;
 uint16_t charge_over_vol_counter;
 uint16_t charge_con_counter=0;
 uint16_t charge_con_fre=500;
+
+uint16_t MPPT_mode_II_counter=0;
+uint16_t MPPT_mode_II_fre=25;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -287,7 +292,7 @@ void C_mode_machine(void)
 		if(now_C_mode==mode_II)
 		{
 			load_curr_ration_mian=0.5;
-			mode_I_soft_start_flag=1;
+			mode_II_soft_start_flag=1;
 			PID_clear(&main_boost_curr_out_pid);
 			PID_clear(&battery_boost_curr_out_pid);
 			PID_clear(&vol_out_pid);
@@ -406,16 +411,16 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			vol_out_pid.max_out+=100;
 			
 			if(main_boost_curr_out_pid.max_out>main_boost_curr_out_pid.max_iout)
-				main_boost_curr_out_pid.max_out=main_boost_curr_out_pid.max_out;
+				main_boost_curr_out_pid.max_out=main_boost_curr_out_pid.max_iout;
 			if(battery_boost_curr_out_pid.max_out>battery_boost_curr_out_pid.max_iout)
-				battery_boost_curr_out_pid.max_out=battery_boost_curr_out_pid.max_out;
+				battery_boost_curr_out_pid.max_out=battery_boost_curr_out_pid.max_iout;
 			if(vol_out_pid.max_out>vol_out_pid.max_iout)
-				vol_out_pid.max_out=vol_out_pid.max_out;
+				vol_out_pid.max_out=vol_out_pid.max_iout;
 			
 			if(main_boost_curr_out_pid.max_out>=main_boost_curr_out_pid.max_iout&&
 					battery_boost_curr_out_pid.max_out>=battery_boost_curr_out_pid.max_iout&&
 					vol_out_pid.max_out>=vol_out_pid.max_iout)
-				mode_I_soft_start_flag=0;
+				mode_II_soft_start_flag=0;
 		}
 		
 		for(uint8_t j=0;j<DATA_CH_NUM;j++)
@@ -454,15 +459,40 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		
 		if(actuall_value[0]>mode_convert_vol)
 			now_C_mode=mode_I;
-//		else
-//			now_C_mode=mode_II;
+		else
+			now_C_mode=mode_II;
 		
 		C_mode_machine();
 		
+//		if(now_C_mode==mode_II)
+//		{	
+//			MPPT_mode_II_counter++;
+//			if(MPPT_mode_II_counter>=MPPT_mode_II_fre)
+//			{
+//				PID_calc(&MPPT_mode_II_pid,actuall_value[0],vin_target);
+//				PID_calc(&vol_out_pid,actuall_value[2],vol_set);
+//				MPPT_mode_II_counter=0;
+//			}
+//			load_curr_ration_mian=1.0f-MPPT_mode_II_pid.out;
+//			//load_curr_ration_mian=0.5;
+//			
+//			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out_pid.out*load_curr_ration_mian);
+//			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out_pid.out*(1-load_curr_ration_mian));
+//		}
+		
 		if(now_C_mode==mode_II)
 		{	
-			PID_calc(&vol_out_pid,actuall_value[2],vol_set);
-			PID_calc(&main_boost_curr_out_pid,actuall_value[3],vol_out_pid.out*load_curr_ration_mian);
+			MPPT_mode_II_counter++;
+			if(MPPT_mode_II_counter>=MPPT_mode_II_fre)
+			{
+				PID_calc(&MPPT_mode_II_pid,actuall_value[0],vin_target);
+				PID_calc(&vol_out_pid,actuall_value[2],vol_set);
+				MPPT_mode_II_counter=0;
+			}
+			load_curr_ration_mian=1.0f-MPPT_mode_II_pid.out;
+			//load_curr_ration_mian=0.5;
+			
+			PID_calc(&main_boost_curr_out_pid,actuall_value[2],vol_set);
 			PID_calc(&battery_boost_curr_out_pid,actuall_value[6],vol_out_pid.out*(1-load_curr_ration_mian));
 		}
 		
@@ -489,7 +519,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 				}
 			}
 			
-			PID_calc(&battery_buck_curr_out_pid,buck_curr_out,battery_buck_vol_out_pid.out);
+			PID_calc(&battery_buck_curr_out_pid,actuall_value[0],vin_target);
 			
 			if(actuall_value[0]<50&&battery_buck_vol_out_pid.error[0]<100.0f)
 			{
@@ -518,7 +548,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			hhrtim1.Instance->sTimerxRegs[0].CMP1xR = MAX_PWM_DUTY - main_boost_vol_out_pid.out;
 		
 		hhrtim1.Instance->sTimerxRegs[1].CMP1xR = battery_buck_curr_out_pid.out;
-		hhrtim1.Instance->sTimerxRegs[3].CMP1xR = MAX_PWM_DUTY - battery_boost_curr_out_pid.out;
+		hhrtim1.Instance->sTimerxRegs[3].CMP1xR = MAX_PWM_DUTY - MPPT_mode_II_pid.out;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 		HAL_ADC_Start_DMA(&hadc2,(uint32_t*)adc2_data,DATA_LEN*4);
@@ -566,15 +596,18 @@ int main(void)
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
 
-	PID_init(&vol_out_pid,PID_DELTA,vol_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
+	PID_init(&MPPT_mode_II_pid,PID_DELTA,MPPT_mode_II_p_i_d,13000,13000);
+	PID_init(&vol_out_pid,PID_DELTA,vol_out_p_i_d,2,2);
 	PID_init(&main_boost_curr_out_pid, PID_DELTA,main_boost_curr_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
-	PID_init(&battery_boost_curr_out_pid, PID_DELTA,battery_boost_curr_out_p_i_d,5000,5000);
+	PID_init(&battery_boost_curr_out_pid, PID_DELTA,battery_boost_curr_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	
 	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_vol_in_p_i_d,2.5,0.1);
-	PID_init(&battery_buck_curr_out_pid, PID_DELTA, battery_buck_curr_in_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
+	PID_init(&battery_buck_curr_out_pid, PID_DELTA, battery_buck_curr_in_p_i_d,12000,MAX_PWM_DUTY-500);
 	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	
 	main_boost_vol_out_pid.out=200;
+	battery_buck_curr_out_pid.out=7000;
+	MPPT_mode_II_pid.out=0.5;
 	
 	
 	
