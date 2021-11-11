@@ -89,7 +89,7 @@ uint16_t adc2_data[DATA_LEN][4]= {0};
 float buck_curr_out;
 
 float vol_set=30;
-float vol_charge=17.5;
+float vol_charge=16.8;
 float load_curr_ration_mian=0.5;
 float mode_convert_vol=25;
 float stop_relay_vol=20;
@@ -102,8 +102,8 @@ pid_type_def battery_buck_vol_out_pid;
 pid_type_def battery_buck_curr_out_pid;
 pid_type_def main_boost_vol_out_pid;
 
-const fp32 battery_buck_vol_in_p_i_d[3]={0.0f,-0.09f,0.0f};
-const fp32 battery_buck_curr_in_p_i_d[3]={0.0f,120.0f,0.0f};
+const fp32 battery_buck_vol_in_p_i_d[3]={0.0f,0.09f,0.0f};
+const fp32 battery_buck_curr_in_p_i_d[3]={0.0f,50.0f,0.0f};
 const fp32 main_boost_vol_out_p_i_d[3]={0.0f,1.0f,0.0f};
 
 //mode_II
@@ -549,7 +549,7 @@ int main(void)
 	PID_init(&main_boost_curr_out_pid, PID_DELTA,main_boost_curr_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	PID_init(&battery_boost_curr_out_pid, PID_DELTA,battery_boost_curr_out_p_i_d,5000,5000);
 	
-	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_vol_in_p_i_d,2.5,0.1);
+	PID_init(&battery_buck_vol_out_pid, PID_DELTA, battery_buck_vol_in_p_i_d,2,0.1);
 	PID_init(&battery_buck_curr_out_pid, PID_DELTA, battery_buck_curr_in_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	PID_init(&main_boost_vol_out_pid,PID_DELTA,main_boost_vol_out_p_i_d,MAX_PWM_DUTY-500,MAX_PWM_DUTY-500);
 	
@@ -693,10 +693,16 @@ int main(void)
 			if(key_no==4)
 				vol_set-=0.05;
 			
+			if(key_no==5)
+				battery_buck_vol_out_pid.max_out+=0.05;
+			if(key_no==6)
+				battery_buck_vol_out_pid.max_out-=0.05;
+			
 			key_no=-1;
 		}
 		
 		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
+		HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
