@@ -163,22 +163,27 @@
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>exter_cycle_buff,0x0A</ItemText>
+          <ItemText>exter_cycle_buff_index,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
           <WinNumber>1</WinNumber>
-          <ItemText>hhrtim1.Instance-&gt;sTimerxRegs[0].CMP1xR,0x0A</ItemText>
+          <ItemText>half_exter_cycle+now_counter,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>spwm_index</ItemText>
+          <ItemText>exter_cycle_buff_sum</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>test_pwm,0x0A</ItemText>
+          <ItemText>exter_cycle_buff,0x0A</ItemText>
+        </Ww>
+        <Ww>
+          <count>5</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>now_counter,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <ScvdList>

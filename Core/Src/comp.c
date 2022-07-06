@@ -36,7 +36,7 @@ void MX_COMP2_Init(void)
   hcomp2.Init.Output = COMP_OUTPUT_NONE;
   hcomp2.Init.OutputPol = COMP_OUTPUTPOL_NONINVERTED;
   hcomp2.Init.BlankingSrce = COMP_BLANKINGSRCE_NONE;
-  hcomp2.Init.TriggerMode = COMP_TRIGGERMODE_IT_RISING_FALLING;
+  hcomp2.Init.TriggerMode = COMP_TRIGGERMODE_IT_RISING;
   if (HAL_COMP_Init(&hcomp2) != HAL_OK)
   {
     Error_Handler();
