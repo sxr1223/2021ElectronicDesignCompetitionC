@@ -59,47 +59,26 @@
 /* USER CODE BEGIN PV */
 static uint16_t spwm[]=
 {
-1020,1349,1679,2009,2338,
-2667,2996,3324,3651,3978,
-4305,4630,4955,5278,5601,
-5922,6242,6561,6878,7194,
-7509,7822,8133,8442,8750,
-9056,9360,9661,9961,10258,
-10553,10846,11136,11424,11709,
-11992,12272,12549,12823,13095,
-13363,13628,13891,14150,14405,
-14658,14907,15153,15395,15634,
-15869,16100,16328,16552,16772,
-16988,17200,17409,17613,17813,
-18009,18201,18388,18571,18750,
-18925,19095,19261,19422,19579,
-19731,19878,20021,20159,20292,
-20421,20545,20664,20778,20887,
-20992,21091,21186,21275,21360,
-21439,21514,21583,21648,21707,
-21761,21810,21854,21893,21926,
-21955,21978,21996,22009,22017,
-
-22017,22009,21996,21978,21955,
-21926,21893,21854,21810,21761,
-21707,21648,21583,21514,21439,
-21360,21275,21186,21091,20992,
-20887,20778,20664,20545,20421,
-20292,20159,20021,19878,19731,
-19579,19422,19261,19095,18925,
-18750,18571,18388,18201,18009,
-17813,17613,17409,17200,16988,
-16772,16552,16328,16100,15869,
-15634,15395,15153,14907,14658,
-14405,14150,13891,13628,13363,
-13095,12823,12549,12272,11992,
-11709,11424,11136,10846,10553,
-10258,9961,9661,9360,9056,
-8750,8442,8133,7822,7509,
-7194,6878,6561,6242,5922,
-5601,5278,4955,4630,4305,
-3978,3651,3324,2996,2667,
-2338,2009,1679,1349,1020
+900,1072,1245,1418,1590,1763,1935,2107,2278,2449,
+2620,2791,2961,3130,3299,3467,3635,3802,3968,4134,
+4299,4463,4626,4788,4949,5109,5268,5426,5583,5739,
+5893,6047,6199,6350,6499,6647,6794,6939,7082,7225,
+7365,7504,7641,7777,7911,8043,8174,8303,8430,8555,
+8678,8799,8918,9035,9151,9264,9375,9484,9591,9696,
+9799,9899,9997,10093,10187,10279,10368,10454,10539,10621,
+10701,10778,10853,10925,10995,11062,11127,11189,11249,11306,
+11361,11413,11463,11510,11554,11596,11635,11671,11705,11736,
+11764,11790,11813,11833,11851,11866,11878,11887,11894,11898,
+11900,11898,11894,11887,11878,11866,11851,11833,11813,11790,
+11764,11736,11705,11671,11635,11596,11554,11510,11463,11413,
+11361,11306,11249,11189,11127,11062,10995,10925,10853,10778,
+10701,10621,10539,10454,10368,10279,10187,10093,9997,9899,
+9799,9696,9591,9484,9375,9264,9151,9035,8918,8799,
+8678,8555,8430,8303,8174,8043,7911,7777,7641,7504,
+7365,7225,7082,6939,6794,6647,6499,6350,6199,6047,
+5893,5739,5583,5426,5268,5109,4949,4788,4626,4463,
+4299,4134,3968,3802,3635,3467,3299,3130,2961,2791,
+2620,2449,2278,2107,1935,1763,1590,1418,1245,1072
 };
 //max duty 91.2
 //medium 1020
@@ -138,6 +117,12 @@ void set_PWM(uint16_t duty,uint8_t ch)
 	hhrtim1.Instance->sTimerxRegs[ch].CMP2xR = duty+(23404-duty)/2;
 }
 
+//#define test
+#ifdef test
+uint32_t test_pwm=21040;
+#endif
+//22000
+//900
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	
@@ -161,12 +146,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				amp_pid.out=1;
 		}
 	}
-	
+
 	if(htim==(&htim17))
 	{
 		if(spwm_index<200)
 		{
-			set_PWM(spwm[spwm_index]-200,0);
+#ifdef test
+			set_PWM(test_pwm,1);
+#else
+			set_PWM(spwm[spwm_index],1);
+#endif
 			if(spwm_index==0)
 			{
 				HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
@@ -197,7 +186,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 		if(spwm_index>=200)
 		{
-			set_PWM((23040-spwm[spwm_index-200]+200),0);
+#ifdef test
+			set_PWM(test_pwm,1);
+#else
+			set_PWM(23040-spwm[399-spwm_index],1);
+#endif
 			if(spwm_index==200)
 			{
 				HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
@@ -271,7 +264,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 #define EXTERN_CYCLE_SAMP_TIMES 10
 void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 {	
-	//全部都是用来计算外部信号周期的变量，每测出5组就设定一次
+	//鍏ㄩ儴閮芥槸鐢ㄦ潵璁＄畻澶栭儴淇″彿鍛ㄦ湡鐨勫彉閲忥紝姣忔祴鍑?5缁勫氨璁惧畾涓?娆?
 	static uint8_t exter_cycle_flag=0;
 	static uint16_t last_counter=0;
 	static uint16_t now_counter=0;
@@ -307,11 +300,11 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 			{
 				for(exter_cycle_buff_index=0;exter_cycle_buff_index<EXTERN_CYCLE_SAMP_TIMES;exter_cycle_buff_index++)
 					exter_cycle_buff_sum+=exter_cycle_buff[exter_cycle_buff_index];
-				cycle_extern=exter_cycle_buff_sum/EXTERN_CYCLE_SAMP_TIMES+5;
+				//cycle_extern=exter_cycle_buff_sum/EXTERN_CYCLE_SAMP_TIMES+5;
 				exter_cycle_buff_sum=exter_cycle_buff_index=0;
 				
-				__HAL_TIM_SetAutoreload(&htim17,cycle_extern*72/400-1);
-				spwm_index=0;
+				//__HAL_TIM_SetAutoreload(&htim17,cycle_extern*72/400-1);
+				//spwm_index=0;
 			}
 			
 			last_counter=now_counter=0;
@@ -395,15 +388,15 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim16);
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	
-	OLED_Init();
-	OLED_Display_On();
-	OLED_printf(0,0,16,"Hello World.");
+//	OLED_Init();
+//	OLED_Display_On();
+//	OLED_printf(0,0,16,"Hello World.");
+//	
+//	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,2048);
+//	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
 	
-	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,2048);
-	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
-	
-	HAL_COMP_Start_IT(&hcomp2);
-	HAL_TIM_Base_Start(&htim15);
+//	HAL_COMP_Start_IT(&hcomp2);
+//	HAL_TIM_Base_Start(&htim15);
 	
   /* USER CODE END 2 */
 
