@@ -50,7 +50,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define SPWM_NUM 400
-#define DATA_LEN 5
+#define DATA_LEN 20
 #define DATA_CH_NUM 6
 /* USER CODE END PM */
 
@@ -136,6 +136,7 @@ void set_PWM(uint16_t dutyA,uint16_t dutyB)
 	hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 23040/2-dutyA/2;
 	hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 23040/2+dutyA/2;
 	hhrtim1.Instance->sTimerxRegs[0].CMP3xR = dutyA+(23404-dutyA)/2;
+	//hhrtim1.Instance->sTimerxRegs[0].CMP3xR = 200;
 
 	hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 23040/2-dutyB/2;
 	hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 23040/2+dutyB/2;
@@ -163,7 +164,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			rms=sqrt(vol_sq_sum);
 			vol_sq_times=vol_sq_sum=0;
 			
-			//PID_calc(&amp_pid,rms,vol_set);
+			PID_calc(&amp_pid,rms,vol_set);
 
 			amp_pid.out=1;
 			if(amp_pid.out<0)
@@ -253,42 +254,44 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 
-	uint16_t i,j;
+	uint8_t i,j;
+	uint16_t max,min;
 	uint32_t sum;
-	static float scale=510.0f/2.0f;
+	static float scale=6200.0f/330.0f;
+	
 	
 	if(hadc==&hadc1)
 	{
+		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
+		max=0,min=4096;
 		for(i=0;i<DATA_CH_NUM;i++)
 		{
 			sum=0;
 			for(j=0;j<DATA_LEN;j++)
+			{
+				if(max<adc_data[j][i])
+					max=adc_data[j][i];
+				if(min>adc_data[j][i])
+					min=adc_data[j][i];
 				sum+=adc_data[j][i];
-			adc_data_fin[i]=sum/DATA_LEN;
+			}
+			adc_data_fin[i]=(sum-max-min)/(DATA_LEN-2);
 		}
 		
 		if(adc_data_fin[0]>adc_ch1_max)
-		{
 			adc_ch1_max=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
-		}
 		if(adc_data_fin[0]<adc_ch1_min)
-		{
 			adc_ch1_min=adc_data_fin[0];
-			adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f/20*scale*1.516f+0.1133f;
-		}		
 		
-		vol_sq_sum+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f/20*255.0f*1.516f+0.1133f),2);
+		adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f*scale;	
+		
+		vol_sq_sum+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f*scale),2);
 		vol_sq_times++;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
 #define EXTERN_CYCLE_SAMP_TIMES 10	
-uint8_t exter_cycle_flag=0;
-uint16_t last_counter=0;
-uint16_t now_counter=0;
-uint16_t half_exter_cycle;
 uint16_t exter_cycle_buff[EXTERN_CYCLE_SAMP_TIMES]={0};
 uint8_t exter_cycle_buff_index=0;
 uint32_t exter_cycle_buff_sum;
@@ -296,14 +299,13 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 {	
 	//全部都是用来计算外部信号周期的变量，每测�?5组就设定�?�?
 
-	
 	if(hcomp==&hcomp2)
 	{		
 		if(__HAL_TIM_GetCounter(&htim15)>2000)
 		{
 			HAL_TIM_Base_Stop(&htim15);
 			
-			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
+			//HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
 			if(__HAL_TIM_GetCounter(&htim15)>1*1000)
 				exter_cycle_buff[exter_cycle_buff_index++]=__HAL_TIM_GetCounter(&htim15);
 
@@ -318,14 +320,9 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 				__HAL_TIM_SetAutoreload(&htim17,cycle_extern*72/400-1);
 				//spwm_index=0;
 			}
-			
-//			last_counter=now_counter=0;
-			
 			__HAL_TIM_SetCounter(&htim15,0);
 			HAL_TIM_Base_Start(&htim15);
 		}
-//		else
-//			last_counter=now_counter;
 	}
 }
 
