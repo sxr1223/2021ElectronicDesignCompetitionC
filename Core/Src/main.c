@@ -74,197 +74,29 @@ typedef struct
 } first_order_filter_type_t;
 
 #define AVERAGE_FILITER_NUM 10
-typedef struct
-{
-	float data[AVERAGE_FILITER_NUM];
-	float sum;
-	float out;
-	uint8_t index;
-} averge_filter_type_t;
 
-first_order_filter_type_t adc_fliter_first_order_LP[6]=
-{	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}},
-	{0,{0.0099009901f,0.9900990099f}}
-};
-
-averge_filter_type_t vol_d_samp_ave_filter={0};
-averge_filter_type_t vol_q_samp_ave_filter={0};
-averge_filter_type_t curr_d_samp_ave_filter={0};
-averge_filter_type_t curr_q_samp_ave_filter={0};
 //ADC buffer and k(x-b)
 //uint16_t adc_data[DATA_LEN][DATA_CH_NUM]= {0};
 uint16_t adc_data[DATA_CH_NUM]= {0};
-float adc_kb[DATA_CH_NUM][2]={
-	{1,0},
-	{1,0},
-	{1,0},
-	{1,0},
-	{1,0},
-	{1,0}
-};
-
 uint16_t temp_vol_samp[3];
 
 //PID
-pid_type_def curr_q_pid;
-pid_type_def vol_q_pid;
 pid_type_def curr_d_pid;
-pid_type_def vol_d_pid;
-pid_type_def vol_DC_pid;
 
-const fp32 curr_q_p_i_d[3]= {0.0001,0.00005,0};
-const fp32 curr_d_p_i_d[3]= {0.0001,0.00005,0};
-const fp32 vol_d_p_i_d[3]=  {0,0.00005,0};
-const fp32 vol_q_p_i_d[3]=  {0,0.00005,0};
-const fp32 vol_DC_p_i_d[3]= {0,0.0001,0};
+const fp32 curr_d_p_i_d[3]= {0.0000,1,0};
 
-const fp32 curr_d_max_out=20;
-const fp32 curr_q_max_out=20;
-const fp32 curr_d_imax_out=18;
-const fp32 curr_q_imax_out=18;
+const fp32 curr_d_max_out=30000;
+const fp32 curr_d_imax_out=25000;
 
-const fp32 vol_d_max_out=5000;
-const fp32 vol_q_max_out=5000;
-const fp32 vol_d_imax_out=4000;
-const fp32 vol_q_imax_out=4000;
 
-const fp32 vol_DC_max_out=10;
-const fp32 vol_DC_imax_out=10;
-
-float dq_vol_set[2]= {5,0};
-float dq_vol_set_open_loop[2]= {0,7};
-
-//qd filter
-float qd_vol_buff;
-
+float vol_set=1200;
 //pwm
 uint16_t pwm[4][2]= {0};
-uint16_t pwm_temp[4];
-
-//vol_in_theta
-float sin_temp,cos_temp;
-
-//sample data
-float abc_curr_out_samp[3]= {1,2,3};
-float al_be_curr_out_samp[2]= {2,4};
-float dq_curr_out_samp[2]= {1,1};
-
-float abc_vol_out_samp[3]= {1,2,3};
-float al_be_vol_out_samp[2]= {2,4};
-float dq_vol_out_samp[2]= {1,1};
-
-float vol_DC_samp;
-
-float module_vol_out;
-float theta_vol=0.01;
-
-float dq_curr_pid_out[2];
-float al_be_curr_pid_out[2];
-
-float last_dq_vol_out_samp[2];
-float last_dq_curr_out_samp[2];
-
-//SVPWM
-uint8_t sector=1;
-float V_DC=25;
-int32_t X,Y,Z;
-uint16_t T_per,T_nex;
-uint16_t T=23040;
-uint16_t T0,T7;
-void (*sector_fun[6])(void);
-
-//pwm_cal_flag
-uint8_t pwm_need_cal_flag=1;
-
-//set_vol_vec
-float theta=0;
-uint16_t step=0;
-
-//cail
-uint8_t cail_time;
-uint32_t cail_res[DATA_CH_NUM]= {0,0,0,0,0,0};
-uint32_t aaa[3];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
-void average_filiter(averge_filter_type_t *temp,float input)
-{
-	temp->index=(temp->index+1)%AVERAGE_FILITER_NUM;
-	temp->sum=temp->sum-temp->data[temp->index]+input;
-	temp->data[temp->index]=input;
-	temp->out=temp->sum/AVERAGE_FILITER_NUM;
-}
-
-void first_order_filter(first_order_filter_type_t *first_order_filter_type, fp32 input)
-{
-    first_order_filter_type->out =input*(first_order_filter_type->num[0])+(first_order_filter_type->out)*(first_order_filter_type->num[1]);
-}
-
-void clarke_amp(float abc[3],float alph_beta_res[2])
-{
-	alph_beta_res[0]=(2.0f*abc[0]-abc[1]-abc[2])/3.0f;
-	alph_beta_res[1]=(abc[1]-abc[2])/SQRT_3;
-}
-
-void clarke_pow(float abc[3],float alph_beta_res[2])
-{
-	alph_beta_res[0]=(2.0f*abc[0]-abc[1]-abc[2])/SQRT_6;
-	alph_beta_res[1]=(abc[1]-abc[2])/SQRT_2;
-}
-
-void clarke_amp_simp(float abc[3],float alph_beta_res[2])
-{
-	alph_beta_res[0]=abc[0];
-	alph_beta_res[1]=(abc[0]+2.0f*abc[1])/SQRT_3;
-}
-
-void iclarke_amp(float abc_res[3],float alph_beta[2])
-{
-	abc_res[0]=SQRT_6_DIV_3*alph_beta[0];
-	abc_res[1]=-alph_beta[0]/SQRT_6+alph_beta[1]/SQRT_2;
-	abc_res[2]=abc_res[1]-alph_beta[1]*SQRT_2;
-}
-
-void park(float alph_beta[2],float dq_res[2])
-{
-	dq_res[0]=alph_beta[0]*cos_temp+alph_beta[1]*sin_temp;
-	dq_res[1]=-alph_beta[0]*sin_temp+alph_beta[1]*cos_temp;
-}
-
-void ipark(float alph_beta_res[2],float dq[2])
-{
-	alph_beta_res[0]=dq[0]*cos_temp-dq[1]*sin_temp;
-	alph_beta_res[1]=dq[0]*sin_temp+dq[1]*cos_temp;
-}
-
-void clarke_park_amp(float abc[3],float dq_res[2],float theta)
-{
-	dq_res[0]=TWO_DIV_THREE*(arm_cos_f32(theta)*abc[0]+arm_cos_f32(theta-PI_2_DIV_3)*abc[1]+arm_cos_f32(theta+PI_2_DIV_3));
-	dq_res[1]=TWO_DIV_THREE*(-arm_sin_f32(theta)*abc[0]-arm_sin_f32(theta-PI_2_DIV_3)*abc[1]-arm_sin_f32(theta+PI_2_DIV_3));
-}
-
-void iclarke_park_amp(float abc_res[3],float dq[2],float theta)
-{
-	abc_res[0]=dq[0]*arm_cos_f32(theta)-dq[1]*arm_sin_f32(theta);
-	abc_res[1]=dq[0]*arm_cos_f32(theta-PI_2_DIV_3)-dq[1]*arm_sin_f32(theta-PI_2_DIV_3);
-	abc_res[2]=dq[0]*arm_cos_f32(theta+PI_2_DIV_3)-dq[1]*arm_sin_f32(theta+PI_2_DIV_3);
-}
-
-void reset(void)
-{
-	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,10,9);
-	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,10,9);
-	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,8,7.5);
-	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,8,7.5);
-	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,11520,11520);
-}
 
 void set_PWM(void)
 {
@@ -274,120 +106,19 @@ void set_PWM(void)
 		hhrtim1.Instance->sTimerxRegs[i].CMP2xR = pwm[i][1];
 	}
 }
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if(htim==&htim17)
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{	
+	if(hadc==&hadc1)
 	{
-		if(pwm_need_cal_flag==0)
-		{
-			set_PWM();
-			pwm_need_cal_flag=1;
-		}
+
+		PID_calc(&curr_d_pid,adc_data[0],vol_set);
+		pwm[0][1]=curr_d_pid.out;
+		set_PWM();
+		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
+		HAL_GPIO_TogglePin(GPIOB,GPIO_PIN_8);
 		
 	}
-}
-
-void bubble(uint16_t *a,uint8_t num)
-{
-	uint16_t bubble_temp = 0;
-	for (uint16_t i = 0; i < num; i++)
-		for (uint16_t j = 0; j < num-1-i; j++)
-			if (a[j]>a[j+1])
-			{
-				bubble_temp = a[j + 1];
-				a[j + 1] = a[j];
-				a[j] = bubble_temp;
-			}
-}
-
-void sector_1(void)
-{
-	T_per=Y;
-	T_nex=Z;
-	T0=T7=(T-T_per-T_nex)/2;
-	pwm[1][0]=T0/2;
-	pwm[1][1]=MAX_PWM-T0/2;
-
-	pwm[0][0]=MAX_PWM/2-(T_per+T7)/2;
-	pwm[0][1]=MAX_PWM/2+(T_per+T7)/2;
-
-	pwm[2][0]=MAX_PWM/2-T7/2;
-	pwm[2][1]=MAX_PWM/2+T7/2;
-}
-void sector_2(void)
-{
-	T_per=-X;
-	T_nex=Y;
-	T0=T7=(T-T_per-T_nex)/2;
-	pwm[0][0]=T0/2;
-	pwm[0][1]=MAX_PWM-T0/2;
-
-	pwm[2][0]=MAX_PWM/2-(T_per+T7)/2;
-	pwm[2][1]=MAX_PWM/2+(T_per+T7)/2;
-
-	pwm[1][0]=MAX_PWM/2-T7/2;
-	pwm[1][1]=MAX_PWM/2+T7/2;
-}
-
-
-
-void sector_3(void)
-{
-	T_per=-Z;
-	T_nex=X;
-	T0=T7=(T-T_per-T_nex)/2;
-	pwm[0][0]=T0/2;
-	pwm[0][1]=MAX_PWM-T0/2;
-
-	pwm[1][0]=MAX_PWM/2-(T_nex+T7)/2;
-	pwm[1][1]=MAX_PWM/2+(T_nex+T7)/2;
-
-	pwm[2][0]=MAX_PWM/2-T7/2;
-	pwm[2][1]=MAX_PWM/2+T7/2;
-}
-void sector_4(void)
-{
-	T_per=Z;
-	T_nex=-X;
-
-	T0=T7=(T-T_per-T_nex)/2;
-
-	pwm[2][0]=T0/2;
-	pwm[2][1]=MAX_PWM-T0/2;
-
-	pwm[1][0]=MAX_PWM/2-(T_per+T7)/2;
-	pwm[1][1]=MAX_PWM/2+(T_per+T7)/2;
-
-	pwm[0][0]=MAX_PWM/2-T7/2;
-	pwm[0][1]=MAX_PWM/2+T7/2;
-}
-void sector_5(void)
-{
-	T_per=X;
-	T_nex=-Y;
-	T0=T7=(T-T_per-T_nex)/2;
-	pwm[1][0]=T0/2;
-	pwm[1][1]=MAX_PWM-T0/2;
-
-	pwm[2][0]=MAX_PWM/2-(T_nex+T7)/2;
-	pwm[2][1]=MAX_PWM/2+(T_nex+T7)/2;
-
-	pwm[0][0]=MAX_PWM/2-T7/2;
-	pwm[0][1]=MAX_PWM/2+T7/2;
-}
-void sector_6(void)
-{
-	T_per=-Y;
-	T_nex=-Z;
-	T0=T7=(T-T_per-T_nex)/2;
-	pwm[2][0]=T0/2;
-	pwm[2][1]=MAX_PWM-T0/2;
-
-	pwm[0][0]=MAX_PWM/2-(T_nex+T7)/2;
-	pwm[0][1]=MAX_PWM/2+(T_nex+T7)/2;
-
-	pwm[1][0]=MAX_PWM/2-T7/2;
-	pwm[1][1]=MAX_PWM/2+T7/2;
 }
 /* USER CODE END PFP */
 
@@ -434,6 +165,7 @@ int main(void)
   MX_COMP2_Init();
   MX_COMP6_Init();
   MX_DAC1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
 	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
@@ -452,11 +184,8 @@ int main(void)
 
 	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 	
-	PID_init(&vol_d_pid,PID_DELTA,vol_d_p_i_d,vol_d_max_out,vol_d_imax_out);
-	PID_init(&vol_q_pid,PID_DELTA,vol_q_p_i_d,vol_q_max_out,vol_q_imax_out);
-	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,curr_q_max_out,curr_q_imax_out);
-	PID_init(&curr_q_pid,PID_DELTA,curr_q_p_i_d,curr_d_max_out,curr_d_imax_out);
-	PID_init(&vol_DC_pid,PID_DELTA,vol_DC_p_i_d,vol_DC_max_out,vol_DC_imax_out);
+	PID_init(&curr_d_pid,PID_DELTA,curr_d_p_i_d,curr_d_max_out,curr_d_imax_out);
+
 
 
 
@@ -464,36 +193,14 @@ int main(void)
 //	OLED_Display_On();
 //	OLED_printf(0,0,16,"Hello World.");
 
-	HAL_TIM_Base_Start_IT(&htim17);
-
-	sector_fun[0]=sector_1;
-	sector_fun[1]=sector_2;
-	sector_fun[2]=sector_3;
-	sector_fun[3]=sector_4;
-	sector_fun[4]=sector_5;
-	sector_fun[5]=sector_6;
+	HAL_TIM_Base_Start_IT(&htim1);
 	
 	pwm[3][1]=23040/2;
+	pwm[0][0]=1000;
+	pwm[0][1]=5000;
 	set_PWM();
 	
-	pwm_need_cal_flag=0;
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-	
-	for(cail_time=0;cail_time<100;)
-	{
-		if(pwm_need_cal_flag==1)
-		{
-			for(uint8_t i=0;i<DATA_CH_NUM;i++)
-				cail_res[i]+=adc_data[i];
-			cail_time++;
-			pwm_need_cal_flag=0;
-		}
-	}
-	
-	for(uint8_t i=0;i<DATA_CH_NUM;i++)
-		cail_res[i]=cail_res[i]/100.0f;
-
-
 	
   /* USER CODE END 2 */
 
@@ -501,97 +208,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		if(pwm_need_cal_flag==1)
-		{
-			for(uint8_t i=0;i<3;i++)
-			{
-//				first_order_filter(&adc_fliter_first_order_LP[i],adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]));
-//				abc_vol_out_samp[i]=adc_fliter_first_order_LP[i].out;
-//				first_order_filter(&adc_fliter_first_order_LP[i+3],adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]));
-//				abc_curr_out_samp[i]=adc_fliter_first_order_LP[i+3].out;
-				
-//				abc_vol_out_samp[i]=adc_kb[i][0]*(adc_data[i]-adc_kb[i][1]);
-//				abc_curr_out_samp[i]=adc_kb[i+3][0]*(adc_data[i+3]-adc_kb[i+3][1]);
-				abc_vol_out_samp[i] =(float)(adc_data[i]-(uint16_t)cail_res[i])/4096.0f*3.3f*40.0f;
-				abc_curr_out_samp[i]=(float)(adc_data[i+3]-(uint16_t)cail_res[i+3])/4096.0f*3.3f;
-			}
-			
-			HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
-			
-			clarke_amp(abc_vol_out_samp,al_be_vol_out_samp);
-			clarke_amp(abc_curr_out_samp,al_be_curr_out_samp);
-
-			sin_temp=arm_sin_f32(theta);
-			cos_temp=arm_cos_f32(theta);
-			theta+=0.01745329252f;
-			step++;
-			if(step==360)
-			{
-				step=0;
-				theta=0.0f;
-			}
-
-			park(al_be_curr_out_samp,dq_curr_out_samp);
-			park(al_be_vol_out_samp,dq_vol_out_samp);
-			
-			dq_curr_out_samp[0]=-dq_curr_out_samp[0];
-			dq_curr_out_samp[1]=-dq_curr_out_samp[1];
-			dq_vol_out_samp[0]=-dq_vol_out_samp[0];
-			dq_vol_out_samp[1]=-dq_vol_out_samp[1];
-			//120k 300
-			
-//			average_filiter(&vol_d_samp_ave_filter,-dq_vol_out_samp[0]);
-//			average_filiter(&vol_q_samp_ave_filter,-dq_vol_out_samp[1]);
-//			average_filiter(&curr_d_samp_ave_filter,-dq_curr_out_samp[0]);
-//			average_filiter(&curr_q_samp_ave_filter,-dq_curr_out_samp[1]);
-			
-//			if(fabs(dq_curr_out_samp[0]-last_dq_curr_out_samp[0])>150)
-//				dq_curr_out_samp[0]=last_dq_curr_out_samp[0];
-//			else
-//				last_dq_curr_out_samp[0]=dq_curr_out_samp[0];
-//			
-//			if(fabs(dq_curr_out_samp[1]-last_dq_curr_out_samp[1])>150)
-//				dq_curr_out_samp[1]=last_dq_curr_out_samp[1];
-//			else
-//				last_dq_curr_out_samp[1]=dq_curr_out_samp[1];
-			
-//			PID_calc(&vol_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
-//			PID_calc(&vol_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
-
-//			PID_calc(&curr_d_pid,curr_d_samp_ave_filter.out,vol_d_pid.out);
-//			PID_calc(&curr_q_pid,curr_q_samp_ave_filter.out,vol_q_pid.out);
-			
-			PID_calc(&curr_d_pid,dq_vol_out_samp[0],dq_vol_set[0]);
-			PID_calc(&curr_q_pid,dq_vol_out_samp[1],dq_vol_set[1]);
-
-			dq_curr_pid_out[0]=fabs(curr_d_pid.out);
-			dq_curr_pid_out[1]=fabs(curr_q_pid.out);
-			
-//			dq_curr_pid_out[0]=dq_vol_set_open_loop[0];
-//			dq_curr_pid_out[1]=dq_vol_set_open_loop[1];
-			
-			ipark(al_be_curr_pid_out,dq_curr_pid_out);
-
-			sector=(al_be_curr_pid_out[1]>0)|((SQRT_3*al_be_curr_pid_out[0]-al_be_curr_pid_out[1]>0)<<1)|((SQRT_3*al_be_curr_pid_out[0]+al_be_curr_pid_out[1]<0)<<2);
-
-			X=SQRT_3*al_be_curr_pid_out[1]*23040.0f/V_DC;
-			Y=(al_be_curr_pid_out[1]/SQRT_3+al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
-			Z=(al_be_curr_pid_out[1]/SQRT_3-al_be_curr_pid_out[0])*23040.0f/V_DC*1.5f;
-
-//			X=al_be_curr_pid_out[0]*23040.0f/V_DC*1.5f;
-//			Y=(-al_be_curr_pid_out[0]+al_be_curr_pid_out[1]*SQRT_3)*0.5f*23040.0f/V_DC*1.5f;
-//			Z=(-al_be_curr_pid_out[0]-al_be_curr_pid_out[1]*SQRT_3)*0.5f*23040.0f/V_DC*1.5f;
-			
-			sector_fun[sector-1]();
-
-			pwm_need_cal_flag=0;
-			
-			HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
-			aaa[0]=pwm[0][1]-pwm[0][0];
-			aaa[1]=pwm[1][1]-pwm[1][0];
-			aaa[2]=pwm[2][1]-pwm[2][0];
-		}
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -638,10 +254,12 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_HRTIM1|RCC_PERIPHCLK_USART1
-                              |RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_ADC12;
+                              |RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_TIM1
+                              |RCC_PERIPHCLK_ADC12;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
+  PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Hrtim1ClockSelection = RCC_HRTIM1CLK_PLLCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
