@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F334x8</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;                                                                             ../Drivers/STM32F3xx_HAL_Driver/Inc;                                                                             ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;                                                                             ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;                                                                             ../Drivers/CMSIS/Include;                                                                             ..\Drivers\OLED;                                                                             ..\Drivers\PID</IncludePath>
+              <IncludePath>../Core/Inc;                                                                                       ../Drivers/STM32F3xx_HAL_Driver/Inc;                                                                                       ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;                                                                                       ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;                                                                                       ../Drivers/CMSIS/Include;                                                                                       ..\Drivers\OLED;                                                                                       ..\Drivers\PID</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -447,11 +447,6 @@
               <FileName>dma.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/dma.c</FilePath>
-            </File>
-            <File>
-              <FileName>hrtim.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Core/Src/hrtim.c</FilePath>
             </File>
             <File>
               <FileName>i2c.c</FileName>
@@ -572,11 +567,6 @@
               <FileName>stm32f3xx_hal_dac_ex.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_dac_ex.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f3xx_hal_hrtim.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_hrtim.c</FilePath>
             </File>
             <File>
               <FileName>stm32f3xx_hal_tim.c</FileName>

@@ -23,8 +23,6 @@
 #include "comp.h"
 #include "dac.h"
 #include "dma.h"
-#include "hrtim.h"
-#include "hrtim.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -62,7 +60,7 @@ uint16_t adc_data[DATA_LEN][DATA_CH_NUM]={0};
 uint16_t adc_data_fin[DATA_CH_NUM]={0};
 
 pid_type_def pfc_pid;
-const fp32 pfc_p_i_d[3]={0,0.01,0};
+const fp32 pfc_p_i_d[3]={0.0001,0.0001,0};
 
 uint16_t vol_to_spwm;
 float vol_set=10;
@@ -78,12 +76,7 @@ void SystemClock_Config(void);
 
 void set_PWM(uint16_t dutyA,uint16_t dutyB)
 {
-	hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 23040/2-dutyA/2;
-	hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 23040/2+dutyA/2;
-	hhrtim1.Instance->sTimerxRegs[0].CMP3xR = dutyA+(23404-dutyA)/2;
-
-	hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 23040/2-dutyB/2;
-	hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 23040/2+dutyB/2;
+	TIM1->CCR2=dutyA;
 }
 void set_slow_H(void)
 {
@@ -141,23 +134,9 @@ void set_slow_L(void)
 	HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_SET);
 }
 
-//#define test
-#ifdef test
-uint32_t test_pwm=0;
-#endif
-//22000
-//900
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	static float x;
-	if(htim==(&htim16))//1k,1ms
-	{
-	}
-
-	if(htim==(&htim17))
-	{
-	}
-	
 
 }
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
@@ -191,21 +170,50 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		vol_in=1895-adc_data_fin[0];
 		curr_in=adc_data_fin[1]-1937;
 		
-		if(vol_in_polar==0&&vol_in>30)
+		if(vol_in<10&&vol_in>-10)
 		{
-			vol_in_polar=1;
-			set_slow_L();
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
+			HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_2);
+			HAL_TIMEx_PWMN_Stop(&htim1,TIM_CHANNEL_2);
+			HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3|GPIO_PIN_4,GPIO_PIN_RESET);
+		}
+		else 
+		{
+			if(vol_in_polar==0&&vol_in>10)
+			{
+				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
+				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
+
+				vol_in_polar=1;
+				//HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+				set_slow_L();
+			}
+			
+			if(vol_in_polar==1&&vol_in<-10)
+			{
+				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
+				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
+				
+				vol_in_polar=0;
+				//HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
+				set_slow_H();
+			}
 		}
 		
-		if(vol_in_polar==1&&vol_in<30)
+		if(vol_in_polar==1)//pwm cannot too small
 		{
-			vol_in_polar=0;
-			set_slow_H();
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+			PID_calc(&pfc_pid,curr_in,-vol_in);
+			if(pfc_pid.out<0)
+				pfc_pid.out=0;
+			set_PWM(7100-pfc_pid.out,0);
 		}
-		
-		PID_calc(&pfc_pid,vol_in,vol_set);
+
+		if(vol_in_polar==0)//pwm cannot too big
+		{
+			PID_calc(&pfc_pid,-curr_in,-vol_in);
+			if(pfc_pid.out<0)
+				pfc_pid.out=0;
+			set_PWM(pfc_pid.out+100,0);
+		}
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
@@ -246,7 +254,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_HRTIM1_Init();
   MX_TIM17_Init();
   MX_ADC1_Init();
   MX_COMP2_Init();
@@ -255,28 +262,20 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM16_Init();
   MX_TIM15_Init();
+  MX_TIM6_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   
-	PID_init(&pfc_pid,PID_DELTA,pfc_p_i_d,1,0.4);
+	PID_init(&pfc_pid,PID_DELTA,pfc_p_i_d,7200-1,7200-1);
 	
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_MASTER);
-	
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TA1|HRTIM_OUTPUT_TA2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_A);
-	
-	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TB1|HRTIM_OUTPUT_TB2);
-	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_B);
-//	
-//	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TC1|HRTIM_OUTPUT_TC2);
-//	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_C);
-//	
-//	HAL_HRTIM_WaveformOutputStart(&hhrtim1, HRTIM_OUTPUT_TD1|HRTIM_OUTPUT_TD2);
-//	HAL_HRTIM_WaveformCounterStart(&hhrtim1, HRTIM_TIMERID_TIMER_D);
-
 	HAL_GPIO_WritePin(SLOW_L_GPIO_Port,SLOW_L_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(SLOW_H_GPIO_Port,SLOW_H_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 	
+	HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
+	HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
+	
+	HAL_TIM_Base_Start(&htim6);
 	HAL_TIM_Base_Start_IT(&htim17);
 	HAL_TIM_Base_Start_IT(&htim16);
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
@@ -284,12 +283,6 @@ int main(void)
 //	OLED_Init();
 //	OLED_Display_On();
 //	OLED_printf(0,0,16,"Hello World.");
-//	
-//	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,2000);
-//	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
-	
-//	HAL_COMP_Start_IT(&hcomp2);
-//	HAL_TIM_Base_Start(&htim15);
 	
   /* USER CODE END 2 */
 
@@ -343,12 +336,12 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_HRTIM1|RCC_PERIPHCLK_USART1
-                              |RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_ADC12;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1
+                              |RCC_PERIPHCLK_TIM1|RCC_PERIPHCLK_ADC12;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
-  PeriphClkInit.Hrtim1ClockSelection = RCC_HRTIM1CLK_PLLCLK;
+  PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
