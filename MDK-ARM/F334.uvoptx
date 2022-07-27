@@ -160,6 +160,26 @@
           <WinNumber>1</WinNumber>
           <ItemText>rms</ItemText>
         </Ww>
+        <Ww>
+          <count>1</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>adc_data_fin[0],0x0A</ItemText>
+        </Ww>
+        <Ww>
+          <count>2</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>amp_pid</ItemText>
+        </Ww>
+        <Ww>
+          <count>3</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>vol_set</ItemText>
+        </Ww>
+        <Ww>
+          <count>4</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>vol_sq_times,0x0A</ItemText>
+        </Ww>
       </WatchWindow1>
       <ScvdList>
         <Filename>.\EventRecorderStub.scvd</Filename>

@@ -114,15 +114,15 @@ uint16_t adc_ch1_min=4096;
 uint32_t sys_tic=0;
 
 pid_type_def amp_pid;
-const fp32 amp_p_i_d[3]={0,0.4,0};
+const fp32 amp_p_i_d[3]={0,0.01,0};
 
 uint16_t vol_to_spwm;
-float vol_set=7;
+float vol_set=10;
 float rms;
 float vol_sq_sum=0;
 uint16_t vol_sq_times=0;
 
-uint16_t cycle_extern=0;
+uint16_t cycle_extern=20000;
 
 static uint16_t spwm_index=0;
 /* USER CODE END PV */
@@ -136,7 +136,6 @@ void set_PWM(uint16_t dutyA,uint16_t dutyB)
 	hhrtim1.Instance->sTimerxRegs[0].CMP1xR = 23040/2-dutyA/2;
 	hhrtim1.Instance->sTimerxRegs[0].CMP2xR = 23040/2+dutyA/2;
 	hhrtim1.Instance->sTimerxRegs[0].CMP3xR = dutyA+(23404-dutyA)/2;
-	//hhrtim1.Instance->sTimerxRegs[0].CMP3xR = 200;
 
 	hhrtim1.Instance->sTimerxRegs[1].CMP1xR = 23040/2-dutyB/2;
 	hhrtim1.Instance->sTimerxRegs[1].CMP2xR = 23040/2+dutyB/2;
@@ -150,25 +149,27 @@ uint32_t test_pwm=21040;
 //900
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	
-	
-	if(htim==(&htim16))
+	static float x;
+	if(htim==(&htim16))//1k,1ms
 	{
 		sys_tic++;
-		if(sys_tic%(cycle_extern/1000)==0)
+		if(sys_tic%(cycle_extern*5/1000)==0)
 		{
 			adc_ch1_max=0;
 			adc_ch1_min=4096;
 			
 			vol_sq_sum=vol_sq_sum/vol_sq_times;
-			rms=sqrt(vol_sq_sum);
+			x=sqrt(vol_sq_sum);
+//			rms=-1.77028f*x*x + 43.33845f*x + 0.05275f ;
+			rms=43.35312f*x + 0.17551f ;
+//			rms=-28.61181f*x*x*x*x + 31.61418f*x*x*x - 13.79850f*x*x+ 45.18009f*x - 0.04284f;
 			vol_sq_times=vol_sq_sum=0;
 			
 			PID_calc(&amp_pid,rms,vol_set);
 
 			amp_pid.out=1;
 			if(amp_pid.out<0)
-				amp_pid.out=1;
+				amp_pid.out=0;
 		}
 	}
 
@@ -179,7 +180,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #ifdef test
 			set_PWM(test_pwm,test_pwm);
 #else
-			set_PWM(spwm[spwm_index],spwm[200+spwm_index]);
+			set_PWM(spwm[spwm_index]*amp_pid.out,spwm[200+spwm_index]*amp_pid.out);
 #endif
 			if(spwm_index==0)
 			{
@@ -214,7 +215,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #ifdef test
 			set_PWM(test_pwm,test_pwm);
 #else
-			set_PWM(spwm[spwm_index],spwm[spwm_index-200]);
+			set_PWM(spwm[spwm_index]*amp_pid.out,spwm[spwm_index-200]*amp_pid.out);
 #endif
 			if(spwm_index==200)
 			{
@@ -257,7 +258,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	uint8_t i,j;
 	uint16_t max,min;
 	uint32_t sum;
-	static float scale=6200.0f/330.0f;
+	static float scale=1.0f;//510k/0.75k
 	
 	
 	if(hadc==&hadc1)
@@ -285,19 +286,20 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		
 		adc_ch1_amp=(adc_ch1_max-adc_ch1_min)/4096.0f*3.3f*scale;	
 		
-		vol_sq_sum+=pow(((adc_data_fin[0]-1900)/4096.0f*3.3f*scale),2);
+		vol_sq_sum+=pow(((adc_data_fin[0]-1864)/4096.0f*3.3f*scale),2);
 		vol_sq_times++;
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
 #define EXTERN_CYCLE_SAMP_TIMES 10	
+//us
 uint16_t exter_cycle_buff[EXTERN_CYCLE_SAMP_TIMES]={0};
 uint8_t exter_cycle_buff_index=0;
 uint32_t exter_cycle_buff_sum;
 void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 {	
-	//全部都是用来计算外部信号周期的变量，每测�?5组就设定�?�?
+	//全部都是用来计算外部信号周期的变量
 
 	if(hcomp==&hcomp2)
 	{		
@@ -404,8 +406,8 @@ int main(void)
 	HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_2,DAC_ALIGN_12B_R,2000);
 	HAL_DAC_Start(&hdac1,DAC_CHANNEL_2);
 	
-	HAL_COMP_Start_IT(&hcomp2);
-	HAL_TIM_Base_Start(&htim15);
+//	HAL_COMP_Start_IT(&hcomp2);
+//	HAL_TIM_Base_Start(&htim15);
 	
   /* USER CODE END 2 */
 
