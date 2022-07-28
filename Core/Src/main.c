@@ -38,7 +38,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -48,8 +47,10 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define SPWM_NUM 400
-#define DATA_LEN 3
+#define DATA_LEN 5
 #define DATA_CH_NUM 6
+
+uint16_t MAX_PWM_DELT=100;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -60,14 +61,16 @@ uint16_t adc_data[DATA_LEN][DATA_CH_NUM]={0};
 uint16_t adc_data_fin[DATA_CH_NUM]={0};
 
 pid_type_def pfc_pid;
-const fp32 pfc_p_i_d[3]={0.0001,0.0001,0};
+const fp32 pfc_p_i_d[3]={0.0000,0.0000,0};
 
 uint16_t vol_to_spwm;
 float vol_set=10;
 
 int32_t vol_in;
 int32_t curr_in;
-uint16_t vol_in_polar=0;
+int8_t vol_in_polar=0;
+int8_t vol_in_polar_last=0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,7 +79,12 @@ void SystemClock_Config(void);
 
 void set_PWM(uint16_t dutyA,uint16_t dutyB)
 {
-	TIM1->CCR2=dutyA;
+		if((TIM1->CCR2-dutyA)>MAX_PWM_DELT)
+			TIM1->CCR2-=MAX_PWM_DELT;
+		else if((dutyA-TIM1->CCR2)>MAX_PWM_DELT)
+			TIM1->CCR2+=MAX_PWM_DELT;
+		else
+			TIM1->CCR2=dutyA;
 }
 void set_slow_H(void)
 {
@@ -137,7 +145,7 @@ void set_slow_L(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-
+	
 }
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
@@ -151,10 +159,11 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	if(hadc==&hadc1)
 	{
 		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_6);
-		max=0,min=4096;
+		
 		for(i=0;i<DATA_CH_NUM;i++)
 		{
 			sum=0;
+			max=0,min=4096;
 			for(j=0;j<DATA_LEN;j++)
 			{
 				if(max<adc_data[j][i])
@@ -167,22 +176,31 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		}
 		
 		
-		vol_in=1895-adc_data_fin[0];
-		curr_in=adc_data_fin[1]-1937;
+		vol_in=1880-adc_data_fin[0];
+		curr_in=adc_data_fin[2]-1838;
 		
-		if(vol_in<40&&vol_in>-40)
+		if(vol_in<20&&vol_in>-20)
 		{
 			HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_2);
 			HAL_TIMEx_PWMN_Stop(&htim1,TIM_CHANNEL_2);
 			HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3|GPIO_PIN_4,GPIO_PIN_RESET);
+			
+			vol_in_polar_last=vol_in_polar;
+			vol_in_polar=0;
+			
+			if(vol_in_polar_last==-1)
+				TIM1->CCR2=7199;
+			if(vol_in_polar_last==1)
+				TIM1->CCR2=0;
 		}
-		else 
+		else
 		{
 			if(vol_in_polar==0&&vol_in>10)
 			{
 				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
 
+				vol_in_polar_last=vol_in_polar;
 				vol_in_polar=1;
 				//HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
 				set_slow_L();
@@ -193,28 +211,40 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
 				
+				vol_in_polar_last=vol_in_polar;
 				vol_in_polar=0;
 				//HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 				set_slow_H();
 			}
 		}
 		
+		
+		
+		
 		if(vol_in_polar==1)//pwm cannot too small
 		{
-			PID_calc(&pfc_pid,curr_in,-vol_in);
+			PID_calc(&pfc_pid,curr_in,vol_in);
 			if(pfc_pid.out<0)
 				pfc_pid.out=0;
-			pfc_pid.out=3600;
 			set_PWM(7199-pfc_pid.out,0);
 		}
 
-		if(vol_in_polar==0)//pwm cannot too big
+		if(vol_in_polar==-1)//pwm cannot too big
 		{
-			PID_calc(&pfc_pid,-curr_in,-vol_in);
+			PID_calc(&pfc_pid,curr_in,vol_in);
 			if(pfc_pid.out<0)
 				pfc_pid.out=0;
-			pfc_pid.out=3600;
 			set_PWM(pfc_pid.out,0);
+		}
+		
+		if(vol_in_polar==0)
+		{
+			if(vol_in_polar_last==1)
+				set_PWM(6000,0);
+			
+			if(vol_in_polar_last==-1)
+				set_PWM(7000,0);
+			
 		}
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
