@@ -170,7 +170,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		vol_in=1895-adc_data_fin[0];
 		curr_in=adc_data_fin[1]-1937;
 		
-		if(vol_in<10&&vol_in>-10)
+		if(vol_in<40&&vol_in>-40)
 		{
 			HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_2);
 			HAL_TIMEx_PWMN_Stop(&htim1,TIM_CHANNEL_2);
@@ -204,7 +204,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			PID_calc(&pfc_pid,curr_in,-vol_in);
 			if(pfc_pid.out<0)
 				pfc_pid.out=0;
-			set_PWM(7100-pfc_pid.out,0);
+			pfc_pid.out=3600;
+			set_PWM(7199-pfc_pid.out,0);
 		}
 
 		if(vol_in_polar==0)//pwm cannot too big
@@ -212,7 +213,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			PID_calc(&pfc_pid,-curr_in,-vol_in);
 			if(pfc_pid.out<0)
 				pfc_pid.out=0;
-			set_PWM(pfc_pid.out+100,0);
+			pfc_pid.out=3600;
+			set_PWM(pfc_pid.out,0);
 		}
 		
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
