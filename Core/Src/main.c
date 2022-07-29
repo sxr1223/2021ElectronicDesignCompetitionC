@@ -79,12 +79,13 @@ void SystemClock_Config(void);
 
 void set_PWM(uint16_t dutyA,uint16_t dutyB)
 {
-		if((TIM1->CCR2-dutyA)>MAX_PWM_DELT)
-			TIM1->CCR2-=MAX_PWM_DELT;
-		else if((dutyA-TIM1->CCR2)>MAX_PWM_DELT)
-			TIM1->CCR2+=MAX_PWM_DELT;
-		else
-			TIM1->CCR2=dutyA;
+//		if((TIM1->CCR2-dutyA)>MAX_PWM_DELT)
+//			TIM1->CCR2-=MAX_PWM_DELT;
+//		else if((dutyA-TIM1->CCR2)>MAX_PWM_DELT)
+//			TIM1->CCR2+=MAX_PWM_DELT;
+//		else
+//			TIM1->CCR2=dutyA;
+	TIM1->CCR2=3600;
 }
 void set_slow_H(void)
 {
@@ -179,7 +180,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		vol_in=1880-adc_data_fin[0];
 		curr_in=adc_data_fin[2]-1838;
 		
-		if(vol_in<20&&vol_in>-20)
+		if(vol_in<100&&vol_in>-100)
 		{
 			HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_2);
 			HAL_TIMEx_PWMN_Stop(&htim1,TIM_CHANNEL_2);
@@ -188,10 +189,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			vol_in_polar_last=vol_in_polar;
 			vol_in_polar=0;
 			
-			if(vol_in_polar_last==-1)
-				TIM1->CCR2=7199;
-			if(vol_in_polar_last==1)
-				TIM1->CCR2=0;
+			pfc_pid.Iout=0;
 		}
 		else
 		{
@@ -206,13 +204,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 				set_slow_L();
 			}
 			
-			if(vol_in_polar==1&&vol_in<-10)
+			if(vol_in_polar==0&&vol_in<-10)
 			{
 				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
 				
 				vol_in_polar_last=vol_in_polar;
-				vol_in_polar=0;
+				vol_in_polar=-1;
 				//HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_RESET);
 				set_slow_H();
 			}
@@ -239,11 +237,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		
 		if(vol_in_polar==0)
 		{
-			if(vol_in_polar_last==1)
-				set_PWM(6000,0);
-			
-			if(vol_in_polar_last==-1)
-				set_PWM(7000,0);
+
 			
 		}
 		
