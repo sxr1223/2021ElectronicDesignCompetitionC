@@ -50,7 +50,7 @@
 #define DATA_LEN 5
 #define DATA_CH_NUM 6
 
-uint16_t MAX_PWM_DELT=500;
+uint16_t MAX_PWM_DELT=300;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -149,9 +149,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 //			if(vol_in_polar_last==1)
 //				TIM1->CCR2=0;
 			target_pwm=7199-TIM1->CCR2;
+			if(vol_in_polar_last==1)
+				TIM1->CCR2=0;
+			if(vol_in_polar_last==-1)
+				TIM1->CCR2=0;
 		}
 		//*********************** mode 1 ***********************
-		if(vol_in_polar==-2&&vol_in>20&&vol_in_polar_last==-1&&(TIM1->CCR2>target_pwm))
+		if(vol_in_polar==-2&&vol_in>20&&vol_in_polar_last==-1&&(TIM1->CCR2<target_pwm))
 		{
 			HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 			HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
@@ -162,7 +166,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 			set_slow_L();
 		}
 		//*********************** mode -1 ***********************
-		if(vol_in_polar==-2&&vol_in<-20&&vol_in_polar_last==1&&(TIM1->CCR2<target_pwm))
+		if(vol_in_polar==-2&&vol_in<-20&&vol_in_polar_last==1&&(TIM1->CCR2>target_pwm))
 		{
 			HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 			HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
@@ -176,22 +180,21 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		if(vol_in_polar==0&&(vol_in<-50||vol_in>50))
 		{
 			vol_in_polar=-2;
-
 			if(vol_in_polar_last==-1)
 			{
-				target_pwm=6999;
 				HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
 				
 				//HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 			}
 			if(vol_in_polar_last==1)
 			{
-				target_pwm=2000;
 				HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 				
+				//HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 			}
 		}
-	
+
+		
 		if(vol_in_polar==1)//pwm cannot too small
 		{
 			PID_calc(&pfc_pid,curr_in,vol_in);
@@ -214,26 +217,26 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		{
 			if(vol_in_polar_last==1)
 			{
-//				if(TIM1->CCR2+MAX_PWM_DELT>7199)
-//					TIM1->CCR2=7199;
-//				else
-//					TIM1->CCR2+=MAX_PWM_DELT;
-				if(TIM1->CCR2-MAX_PWM_DELT<0)
-					TIM1->CCR2=0;
+				if(TIM1->CCR2+MAX_PWM_DELT>7199)
+					TIM1->CCR2=7199;
 				else
-					TIM1->CCR2-=MAX_PWM_DELT;
+					TIM1->CCR2+=MAX_PWM_DELT;
+//				if(TIM1->CCR2-MAX_PWM_DELT<0)
+//					TIM1->CCR2=0;
+//				else
+//					TIM1->CCR2-=MAX_PWM_DELT;
 			}
 			if(vol_in_polar_last==-1)
 			{
-				if(TIM1->CCR2-MAX_PWM_DELT<0)
-					TIM1->CCR2=0;
-				else
-					TIM1->CCR2-=MAX_PWM_DELT;
-				
-//				if(TIM1->CCR2+MAX_PWM_DELT>7199)
-//					TIM1->CCR2=7199;
+//				if(TIM1->CCR2-MAX_PWM_DELT<0)
+//					TIM1->CCR2=0;
 //				else
-//					TIM1->CCR2+=MAX_PWM_DELT;
+//					TIM1->CCR2-=MAX_PWM_DELT;
+				
+				if(TIM1->CCR2+MAX_PWM_DELT>7199)
+					TIM1->CCR2=7199;
+				else
+					TIM1->CCR2+=MAX_PWM_DELT;
 			}
 		}
 		
