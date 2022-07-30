@@ -10,8 +10,9 @@
       <TargetName>F334</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
+      <pArmCC>5060960::V5.06 update 7 (build 960)::.\ARMCC</pArmCC>
       <pCCUsed>6160000::V6.16::ARMCLANG</pCCUsed>
-      <uAC6>1</uAC6>
+      <uAC6>0</uAC6>
       <TargetOption>
         <TargetCommonOption>
           <Device>STM32F334C8Tx</Device>
@@ -313,7 +314,7 @@
           </ArmAdsMisc>
           <Cads>
             <interw>1</interw>
-            <Optim>2</Optim>
+            <Optim>1</Optim>
             <oTime>0</oTime>
             <SplitLS>0</SplitLS>
             <OneElfS>1</OneElfS>
@@ -322,7 +323,7 @@
             <PlainCh>0</PlainCh>
             <Ropi>0</Ropi>
             <Rwpi>0</Rwpi>
-            <wLevel>3</wLevel>
+            <wLevel>2</wLevel>
             <uThumb>0</uThumb>
             <uSurpInc>0</uSurpInc>
             <uC99>1</uC99>
@@ -337,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32F334x8</Define>
+              <Define>USE_HAL_DRIVER,STM32F334x8,__TARGET_FPU_VFP,__CC_ARM,__FPU_PRESENT</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;                                                                                       ../Drivers/STM32F3xx_HAL_Driver/Inc;                                                                                       ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;                                                                                       ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;                                                                                       ../Drivers/CMSIS/Include;                                                                                       ..\Drivers\OLED;                                                                                       ..\Drivers\PID</IncludePath>
+              <IncludePath>../Core/Inc;                                                                                           ../Drivers/STM32F3xx_HAL_Driver/Inc;                                                                                           ../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy;                                                                                           ../Drivers/CMSIS/Device/ST/STM32F3xx/Include;                                                                                           ../Drivers/CMSIS/Include;                                                                                           ..\Drivers\OLED;                                                                                           ..\Drivers\PID</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>

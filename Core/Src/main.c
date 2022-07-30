@@ -244,11 +244,78 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	}
 }
+
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+float Irms=0;       //电流有效�?
+float Vrms=0;       //电压有效�?
+float Frequency=0;  //频率
+float PowerFactor=1;//功率因数
+float PActive=0;    //有功功率
+double W_KWH=0;     //累积功�??
+
+uint8_t  Uart2_RxBuf[50]={0};//串口接收缓存
+uint32_t Uart2_RxCnt=0;//接收计数
+uint8_t data_error=0;
+uint8_t CmdTxBuf[]={0x55,0x55,0x01,0x02,0x00,0x00,0xAD};
+
+uint8_t SUI_101A_Get(uint8_t adder){
+
+	
+	
+	CmdTxBuf[2]=adder;
+	Uart2_RxCnt=0;
+	CmdTxBuf[6]=CmdTxBuf[0]+CmdTxBuf[1]+CmdTxBuf[2]+CmdTxBuf[3]+CmdTxBuf[4]+CmdTxBuf[5];//重新计算校验�?
+	HAL_UART_Transmit_DMA(&huart3, CmdTxBuf,7); 
+	HAL_UART_Receive_DMA(&huart3, (uint8_t *)Uart2_RxBuf, 31);
+
+//	printf(" | V:%10.05f | I:%10.05f | P:%10.05f | PF:%10.05f | F:%10.05f | W:%10.05f |\r\n",Vrms,Irms,PActive,PowerFactor,Frequency,W_KWH);
+	return 0;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	uint8_t t=20;
+	uint8_t rxlen=0;
+	uint8_t i=0;
+	uint8_t sum=0;
+	uint8_t n=0;
+	while(t)
+	{
+		t--;
+		rxlen=31;
+//		if((rxlen==Uart2_RxCnt)&&(rxlen!=0)){//接收到了数据,且接收完成了
+//			if(rxlen==(Uart2_RxBuf[5]+7)){
+//				//数据长度正确
+//			}
+//			else{
+//				data_error=3;
+//			}
+			sum=0;
+			rxlen-=1;//除去校验位的长度
+			for(i=0;i<rxlen;i++){
+				sum+=Uart2_RxBuf[i];
+			}
+			if(sum==Uart2_RxBuf[rxlen]){//校验和正硿
+				Vrms=(double)(((uint32_t)Uart2_RxBuf[6] <<24)|((uint32_t)Uart2_RxBuf[7] <<16)|((uint32_t)Uart2_RxBuf[8] <<8)|((uint32_t)Uart2_RxBuf[9] <<0))/1000.0;
+				Irms=(double)(((uint32_t)Uart2_RxBuf[10]<<24)|((uint32_t)Uart2_RxBuf[11]<<16)|((uint32_t)Uart2_RxBuf[12]<<8)|((uint32_t)Uart2_RxBuf[13]<<0))/1000.0;
+				PActive=(double)(((uint32_t)Uart2_RxBuf[14]<<24)|((uint32_t)Uart2_RxBuf[15]<<16)|((uint32_t)Uart2_RxBuf[16]<<8)|((uint32_t)Uart2_RxBuf[17]<<0))/1000.0;
+				n=18;
+				PowerFactor=(double)(int32_t)(((int32_t)Uart2_RxBuf[n++]<<24)|((int32_t)Uart2_RxBuf[n++]<<16)|((int32_t)Uart2_RxBuf[n++]<<8)|((int32_t)Uart2_RxBuf[n++]<<0))/10000.0;
+				Frequency=(double)(((uint32_t)Uart2_RxBuf[n++]<<24)|((uint32_t)Uart2_RxBuf[n++]<<16)|((uint32_t)Uart2_RxBuf[n++]<<8)|((uint32_t)Uart2_RxBuf[n++]<<0))/1000.0;
+				W_KWH=(double)(((uint32_t)Uart2_RxBuf[n++]<<24)|((uint32_t)Uart2_RxBuf[n++]<<16)|((uint32_t)Uart2_RxBuf[n++]<<8)|((uint32_t)Uart2_RxBuf[n++]<<0))/10000.0;
+			}
+			else{//数据校验错误
+				data_error=1;
+			}
+			break;
+		}
+//	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -285,11 +352,11 @@ int main(void)
   MX_COMP2_Init();
   MX_DAC1_Init();
   MX_I2C1_Init();
-  MX_USART1_UART_Init();
   MX_TIM16_Init();
   MX_TIM15_Init();
   MX_TIM6_Init();
   MX_TIM1_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   
 	PID_init(&pfc_pid,PID_DELTA,pfc_p_i_d,7200-1,7200-1);
@@ -306,6 +373,7 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim16);
 	HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adc_data,DATA_LEN*DATA_CH_NUM);
 	
+	
 //	OLED_Init();
 //	OLED_Display_On();
 //	OLED_printf(0,0,16,"Hello World.");
@@ -316,7 +384,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
+	SUI_101A_Get(1);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -362,9 +431,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1
-                              |RCC_PERIPHCLK_TIM1|RCC_PERIPHCLK_ADC12;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_TIM1
+                              |RCC_PERIPHCLK_ADC12;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
